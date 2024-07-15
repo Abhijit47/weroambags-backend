@@ -29,6 +29,15 @@ exports.getBags = async (req, res, next) => {
       return res.status(404).json({ message: 'No bags found' });
     }
 
+    // console.log('', await req.hostname);
+    console.log('protocol', req.protocol);
+    console.log('hostname', req.get('host'));
+    console.log('originalUrl', req.originalUrl);
+    console.log('baseUrl', req.baseUrl);
+    console.log('path', req.path);
+
+    const url = `${req.protocol}://${req.get('host')}${req.originalUrl}`;
+
     return res.status(200).json({ status: 'success', bags });
   } catch (error) {
     return res.status(500).json({ message: error.message });
@@ -55,11 +64,55 @@ exports.getBag = async (req, res, next) => {
   }
 };
 
+exports.getAccessBagsImages = async (req, res, next) => {
+  try {
+    console.log('protocol', req.protocol);
+    console.log('hostname', req.get('host'));
+    console.log('originalUrl', req.originalUrl);
+    console.log('baseUrl', req.baseUrl);
+    console.log('path', req.path);
+    console.log('query', req.query);
+    console.log('params', req.params);
+    console.log('', await req);
+
+    // return res.send(Buffer.from('Hello World!'));
+    return res.status(200).json({ message: 'Access public route' });
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+};
+
 exports.createBag = async (req, res, next) => {
   try {
-    const { title, oldPrice, rating, newPrice, available, sold } = req.body;
+    const {
+      title,
+      oldPrice,
+      rating,
+      newPrice,
+      available,
+      sold,
+      category,
+      subCategory,
+      quantity,
+      reviewCount,
+      description,
+      specifications,
+    } = req.body;
 
-    if (!title || !oldPrice || !rating || !newPrice || !available || !sold) {
+    if (
+      !title ||
+      !oldPrice ||
+      !rating ||
+      !newPrice ||
+      !available ||
+      !sold ||
+      !category ||
+      !subCategory ||
+      !quantity ||
+      !reviewCount ||
+      !description ||
+      !specifications
+    ) {
       return res
         .status(400)
         .json({ message: 'Please provide all the details' });
@@ -69,10 +122,17 @@ exports.createBag = async (req, res, next) => {
       return res.status(400).json({ message: 'Please upload an image' });
     }
 
-    const files = req.files.map((file) => file.originalname);
+    const files = req.files.map(
+      (file) =>
+        file.originalname.split('.')[0] +
+        '-' +
+        Date.now() +
+        '.' +
+        file.originalname.split('.')[1]
+    );
 
     req.files.forEach(async (file) => {
-      const fileName = `${file.originalname.split('.')[0]}.${
+      const fileName = `${file.originalname.split('.')[0]}-${Date.now()}.${
         file.originalname.split('.')[1]
       }`;
 
@@ -85,6 +145,9 @@ exports.createBag = async (req, res, next) => {
 
       await writeFile(join(folderName, fileName), file.buffer);
     });
+    const url = `${req.protocol}://${req.get('host')}/api/v1/public`;
+    // access the images
+    const images = files.map((file) => `${url}/bags/${file}`);
 
     const obj = {
       title,
@@ -93,7 +156,13 @@ exports.createBag = async (req, res, next) => {
       newPrice,
       available,
       sold,
-      thumbnail: files,
+      thumbnail: images,
+      category,
+      subCategory,
+      quantity,
+      reviewCount,
+      description,
+      specifications,
     };
 
     // create a bag

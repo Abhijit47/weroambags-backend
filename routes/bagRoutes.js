@@ -4,17 +4,19 @@ const bagController = require('../controllers/bagController');
 
 const router = express.Router();
 
-router.route('/getBags').get(bagController.getBags);
+router.route('/get-bags').get(bagController.getBags);
 
-router.route('/getBag/:id').get(bagController.getBag);
+router.route('/get-bag/:id').get(bagController.getBag);
+
+router.route('/public/bags').get(bagController.getAccessBagsImages);
 
 router
-  .route('/createBag')
+  .route('/create-bag')
   .post(bagController.uploadBagsImage, bagController.createBag);
 
-router.route('/updateBag/:id').patch(bagController.updateBag);
+router.route('/update-bag/:id').patch(bagController.updateBag);
 
-router.route('/deleteBag/:id').delete(bagController.deleteBag);
+router.route('/delete-bag/:id').delete(bagController.deleteBag);
 
 router.route('/downloadImages').post(bagController.downloadImages);
 
