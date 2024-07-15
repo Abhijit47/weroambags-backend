@@ -145,7 +145,7 @@ exports.createBag = async (req, res, next) => {
 
       await writeFile(join(folderName, fileName), file.buffer);
     });
-    const url = `${req.protocol}://${req.get('host')}/api/v1/public`;
+    const url = `${req.protocol}://${req.get('host')}`;
     // access the images
     const images = files.map((file) => `${url}/bags/${file}`);
 
@@ -178,7 +178,79 @@ exports.createBag = async (req, res, next) => {
 
 exports.updateBag = async (req, res, next) => {
   try {
-    return res.status(200).json({ message: 'Update a bag' });
+    const bagId = req.params.id;
+
+    if (!bagId || bagId.length < 24) {
+      return res.status(400).json({ message: 'Invalid bag ID' });
+    }
+
+    const {
+      title,
+      oldPrice,
+      rating,
+      newPrice,
+      available,
+      sold,
+      category,
+      subCategory,
+      quantity,
+      reviewsCount,
+      description,
+      specifications,
+    } = req.body;
+
+    if (
+      !title ||
+      !oldPrice ||
+      !rating ||
+      !newPrice ||
+      !available ||
+      !sold ||
+      !category ||
+      !subCategory ||
+      !quantity ||
+      !reviewsCount ||
+      !description ||
+      !specifications
+    ) {
+      return res
+        .status(400)
+        .json({ message: 'Please provide all the details' });
+    }
+
+    const updatedReq = {
+      title,
+      oldPrice,
+      rating,
+      newPrice,
+      available,
+      sold,
+      category,
+      subCategory,
+      quantity,
+      reviewsCount,
+      description,
+      specifications,
+    };
+
+    const updateBag = await Bag.findByIdAndUpdate(
+      {
+        _id: bagId,
+      },
+      {
+        $set: { ...updatedReq },
+      },
+      {
+        new: true,
+        runValidators: true,
+      }
+    );
+
+    if (!updateBag) {
+      return res.status(404).json({ message: 'Bag not found' });
+    }
+
+    return res.status(200).json({ message: 'Update a bag', updateBag });
   } catch (error) {
     return res.status(500).json({ message: error.message });
   }
@@ -186,7 +258,19 @@ exports.updateBag = async (req, res, next) => {
 
 exports.deleteBag = async (req, res, next) => {
   try {
-    return res.status(200).json({ message: 'Delete a bag' });
+    const bagId = req.params.id;
+
+    if (!bagId || bagId.length < 24) {
+      return res.status(400).json({ message: 'Invalid bag ID' });
+    }
+
+    const deleteBag = await Bag.findByIdAndDelete(bagId);
+
+    if (!deleteBag) {
+      return res.status(404).json({ message: 'Bag not found' });
+    }
+
+    return res.status(200).json({ message: 'Delete a bag', deleteBag });
   } catch (error) {
     return res.status(500).json({ message: error.message });
   }
