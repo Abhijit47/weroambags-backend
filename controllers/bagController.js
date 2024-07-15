@@ -1,4 +1,4 @@
-const { writeFile } = require('fs/promises');
+const { writeFile, unlink } = require('fs/promises');
 const { existsSync, mkdirSync } = require('fs');
 const { join } = require('path');
 const multer = require('multer');
@@ -28,15 +28,6 @@ exports.getBags = async (req, res, next) => {
     if (!bags) {
       return res.status(404).json({ message: 'No bags found' });
     }
-
-    // console.log('', await req.hostname);
-    console.log('protocol', req.protocol);
-    console.log('hostname', req.get('host'));
-    console.log('originalUrl', req.originalUrl);
-    console.log('baseUrl', req.baseUrl);
-    console.log('path', req.path);
-
-    const url = `${req.protocol}://${req.get('host')}${req.originalUrl}`;
 
     return res.status(200).json({ status: 'success', bags });
   } catch (error) {
@@ -264,13 +255,28 @@ exports.deleteBag = async (req, res, next) => {
       return res.status(400).json({ message: 'Invalid bag ID' });
     }
 
+    const existingBag = await Bag.findById(bagId).lean();
+
+    if (!existingBag) {
+      return res.status(404).json({ message: 'Bag not found' });
+    }
+
+    const images = existingBag.thumbnail;
+
+    images.forEach(async (image) => {
+      const imageName = image.split('/').pop();
+      const folderName = join(process.cwd(), 'public', 'bags');
+
+      await unlink(join(folderName, imageName));
+    });
+
     const deleteBag = await Bag.findByIdAndDelete(bagId);
 
     if (!deleteBag) {
       return res.status(404).json({ message: 'Bag not found' });
     }
 
-    return res.status(200).json({ message: 'Delete a bag', deleteBag });
+    return res.status(200).json({ message: 'Delete a bag' });
   } catch (error) {
     return res.status(500).json({ message: error.message });
   }
