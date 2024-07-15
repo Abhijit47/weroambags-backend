@@ -94,7 +94,7 @@ exports.createBag = async (req, res, next) => {
       category,
       subCategory,
       quantity,
-      reviewCount,
+      reviewsCount,
       description,
       specifications,
     } = req.body;
@@ -109,7 +109,7 @@ exports.createBag = async (req, res, next) => {
       !category ||
       !subCategory ||
       !quantity ||
-      !reviewCount ||
+      !reviewsCount ||
       !description ||
       !specifications
     ) {
@@ -160,7 +160,7 @@ exports.createBag = async (req, res, next) => {
       category,
       subCategory,
       quantity,
-      reviewCount,
+      reviewsCount,
       description,
       specifications,
     };

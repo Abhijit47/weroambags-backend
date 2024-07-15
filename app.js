@@ -5,7 +5,7 @@ const path = require('path');
 const app = express();
 
 const bagRoutes = require('./routes/bagRoutes');
-const publicRoutes = require('./routes/publicRoutes');
+// const publicRoutes = require('./routes/publicRoutes');
 
 app.use(cors());
 app.use(express.json());
@@ -17,7 +17,7 @@ app.get('/', (req, res) => {
 });
 
 app.use('/api/v1/bag', bagRoutes);
-app.use('/public', publicRoutes);
+// app.use('/public', publicRoutes);
 
 app.all('*', (req, res) => {
   return res.status(404).json({
