@@ -8,8 +8,6 @@ router.route('/get-bags').get(bagController.getBags);
 
 router.route('/get-bag/:id').get(bagController.getBag);
 
-router.route('/public/bags').get(bagController.getAccessBagsImages);
-
 router
   .route('/create-bag')
   .post(bagController.uploadBagsImage, bagController.createBag);

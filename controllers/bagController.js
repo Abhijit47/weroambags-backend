@@ -1,8 +1,11 @@
 const { writeFile, unlink } = require('fs/promises');
 const { existsSync, mkdirSync } = require('fs');
 const { join } = require('path');
+
 const multer = require('multer');
+
 const Bag = require('../models/bagsModel');
+const { randomId } = require('../utils/helpers');
 
 const multerStorage = multer.memoryStorage();
 
@@ -113,17 +116,21 @@ exports.createBag = async (req, res, next) => {
       return res.status(400).json({ message: 'Please upload an image' });
     }
 
+    let id = randomId();
+
     const files = req.files.map(
       (file) =>
         file.originalname.split('.')[0] +
         '-' +
-        Date.now() +
+        id +
         '.' +
         file.originalname.split('.')[1]
     );
 
+    // console.log('files', files);
+
     req.files.forEach(async (file) => {
-      const fileName = `${file.originalname.split('.')[0]}-${Date.now()}.${
+      const fileName = `${file.originalname.split('.')[0]}-${id}.${
         file.originalname.split('.')[1]
       }`;
 
@@ -136,9 +143,12 @@ exports.createBag = async (req, res, next) => {
 
       await writeFile(join(folderName, fileName), file.buffer);
     });
-    const url = `${req.protocol}://${req.get('host')}`;
+
+    const url = `https://weroambags-backend.onrender.com`;
     // access the images
     const images = files.map((file) => `${url}/bags/${file}`);
+
+    // console.log('images', images);
 
     const obj = {
       title,
@@ -157,12 +167,16 @@ exports.createBag = async (req, res, next) => {
     };
 
     // create a bag
-    const bag = await Bag.create(obj);
+    const newBag = await Bag.create(obj);
+
+    // reset the id
+    id = '';
 
     return res
       .status(201)
-      .json({ message: 'Bag added to your collection', bag });
+      .json({ message: 'Bag added to your collection', newBag });
   } catch (error) {
+    console.log('error from create endpont', error);
     return res.status(500).json({ message: error.message });
   }
 };
@@ -263,9 +277,13 @@ exports.deleteBag = async (req, res, next) => {
 
     const images = existingBag.thumbnail;
 
+    // console.log('images', images);
+
     images.forEach(async (image) => {
       const imageName = image.split('/').pop();
       const folderName = join(process.cwd(), 'public', 'bags');
+
+      // console.log('', folderName, imageName);
 
       await unlink(join(folderName, imageName));
     });
@@ -276,7 +294,7 @@ exports.deleteBag = async (req, res, next) => {
       return res.status(404).json({ message: 'Bag not found' });
     }
 
-    return res.status(200).json({ message: 'Delete a bag' });
+    return res.status(200).json({ message: 'Delete a bag'.deleteBag._id });
   } catch (error) {
     return res.status(500).json({ message: error.message });
   }
