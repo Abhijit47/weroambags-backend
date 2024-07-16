@@ -112,8 +112,8 @@ exports.createBag = async (req, res, next) => {
         .json({ message: 'Please provide all the details' });
     }
 
-    if (req.files.length < 0) {
-      return res.status(400).json({ message: 'Please upload an image' });
+    if (req.files.length <= 0) {
+      return res.status(400).json({ message: 'Please upload thumbnails' });
     }
 
     let id = randomId();
@@ -288,13 +288,17 @@ exports.deleteBag = async (req, res, next) => {
       await unlink(join(folderName, imageName));
     });
 
-    const deleteBag = await Bag.findByIdAndDelete(bagId);
+    const deleteBag = await Bag.findByIdAndDelete(bagId)
+      .lean()
+      .select('-updatedAt');
 
     if (!deleteBag) {
-      return res.status(404).json({ message: 'Bag not found' });
+      return res.status(404).json({ message: 'Bag not found for delete' });
     }
 
-    return res.status(200).json({ message: 'Delete a bag'.deleteBag._id });
+    return res
+      .status(200)
+      .json({ message: 'Successfully deleted bag', deletedBag: deleteBag._id });
   } catch (error) {
     return res.status(500).json({ message: error.message });
   }
