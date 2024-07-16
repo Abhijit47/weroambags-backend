@@ -21,7 +21,7 @@ app.use('/api/v1/blog', blogRoutes);
 
 app.all('*', (req, res) => {
   return res.status(404).json({
-    message: `Can't find ${req.method} ${req.originalUrl} on this server!`,
+    message: `Can't find ${req.method} with ${req.originalUrl} on this server!`,
   });
 });
 

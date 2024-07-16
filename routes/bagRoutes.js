@@ -12,7 +12,9 @@ router
   .route('/create-bag')
   .post(bagController.uploadBagsImage, bagController.createBag);
 
-router.route('/update-bag/:id').patch(bagController.updateBag);
+router
+  .route('/update-bag/:id')
+  .patch(bagController.uploadBagsImage, bagController.updateBag);
 
 router.route('/delete-bag/:id').delete(bagController.deleteBag);
 

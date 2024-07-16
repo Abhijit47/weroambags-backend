@@ -55,6 +55,11 @@ const bagSchema = new mongoose.Schema(
     thumbnail: {
       type: Array,
       required: [true, 'Please provide a thumbnail'],
+      // default: [
+      //   'https://placehold.co/600x400/png',
+      //   'https://placehold.co/600x400/png',
+      //   'https://placehold.co/600x400/png',
+      // ],
     },
     category: {
       type: String,

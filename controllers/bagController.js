@@ -120,7 +120,11 @@ exports.createBag = async (req, res, next) => {
 
     const files = req.files.map(
       (file) =>
-        file.originalname.split('.')[0] +
+        file.originalname
+          .toLowerCase()
+          .replaceAll(' ', '-')
+          .replace(/\s/g, '-')
+          .split('.')[0] +
         '-' +
         id +
         '.' +
@@ -130,9 +134,16 @@ exports.createBag = async (req, res, next) => {
     // console.log('files', files);
 
     req.files.forEach(async (file) => {
-      const fileName = `${file.originalname.split('.')[0]}-${id}.${
-        file.originalname.split('.')[1]
-      }`;
+      const fileName =
+        file.originalname
+          .toLowerCase()
+          .replaceAll(' ', '-')
+          .replace(/\s/g, '-')
+          .split('.')[0] +
+        '-' +
+        id +
+        '.' +
+        file.originalname.split('.')[1];
 
       const folderName = join(__dirname, '..', 'public', 'bags');
 
@@ -204,58 +215,106 @@ exports.updateBag = async (req, res, next) => {
       specifications,
     } = req.body;
 
-    if (
-      !title ||
-      !oldPrice ||
-      !rating ||
-      !newPrice ||
-      !available ||
-      !sold ||
-      !category ||
-      !subCategory ||
-      !quantity ||
-      !reviewsCount ||
-      !description ||
-      !specifications
-    ) {
-      return res
-        .status(400)
-        .json({ message: 'Please provide all the details' });
+    const existingBag = await Bag.findById({ _id: bagId }).lean();
+    if (!existingBag) {
+      return res.status(404).json({ message: 'Bag not found for update' });
     }
 
-    const updatedReq = {
-      title,
-      oldPrice,
-      rating,
-      newPrice,
-      available,
-      sold,
-      category,
-      subCategory,
-      quantity,
-      reviewsCount,
-      description,
-      specifications,
+    let newImages = undefined;
+
+    if (!req.files.length <= 0) {
+      let id = randomId();
+      const files = req.files.map(
+        (file) =>
+          file.originalname
+            .toLowerCase()
+            .replaceAll(' ', '-')
+            .replace(/\s/g, '-')
+            .split('.')[0] +
+          '-' +
+          id +
+          '.' +
+          file.originalname.split('.')[1]
+      );
+
+      const existingThumbnails = existingBag.thumbnail;
+
+      // Remove the old images
+      existingThumbnails.forEach(async (image) => {
+        const imageName = image.split('/').pop();
+        const folderName = join(process.cwd(), 'public', 'bags');
+
+        await unlink(join(folderName, imageName));
+      });
+
+      // Upload the new images
+      req.files.forEach(async (file) => {
+        const fileName =
+          file.originalname
+            .toLowerCase()
+            .replaceAll(' ', '-')
+            .replace(/\s/g, '-')
+            .split('.')[0] +
+          '-' +
+          id +
+          '.' +
+          file.originalname.split('.')[1];
+
+        const folderName = join(__dirname, '..', 'public', 'bags');
+
+        // check if the folder exists
+        if (!existsSync(folderName)) {
+          mkdirSync(folderName);
+        }
+
+        await writeFile(join(folderName, fileName), file.buffer);
+      });
+      const url = `https://weroambags-backend.onrender.com`;
+
+      // access the images
+      newImages = files.map((file) => `${url}/bags/${file}`);
+    }
+
+    const updatedReqObj = {
+      title: title || existingBag.title,
+      oldPrice: oldPrice || existingBag.oldPrice,
+      rating: rating || existingBag.rating,
+      newPrice: newPrice || existingBag.newPrice,
+      available: available || existingBag.available,
+      sold: sold || existingBag.sold,
+      thumbnail: newImages ?? existingBag.thumbnail,
+      category: existingBag.category,
+      subCategory: existingBag.subCategory,
+      quantity: quantity || existingBag.quantity,
+      reviewsCount: reviewsCount || existingBag.reviewsCount,
+      description: description || existingBag.description,
+      specifications: specifications || existingBag.specifications,
     };
 
-    const updateBag = await Bag.findByIdAndUpdate(
+    const updatedBag = await Bag.findOneAndUpdate(
       {
         _id: bagId,
       },
       {
-        $set: { ...updatedReq },
+        $set: updatedReqObj,
       },
       {
         new: true,
         runValidators: true,
       }
-    );
+    ).lean();
 
-    if (!updateBag) {
+    if (!updatedBag) {
       return res.status(404).json({ message: 'Bag not found' });
     }
 
-    return res.status(200).json({ message: 'Update a bag', updateBag });
+    // Reset the id
+    id = '';
+
+    // Return the image
+    newImages = undefined;
+
+    return res.status(200).json({ message: 'Update a bag', updatedBag });
   } catch (error) {
     return res.status(500).json({ message: error.message });
   }
