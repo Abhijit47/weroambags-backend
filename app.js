@@ -11,6 +11,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 const bagRoutes = require('./routes/bagRoutes');
 const blogRoutes = require('./routes/blogRoutes');
+const orderRoutes = require('./routes/orderRoutes');
 
 app.get('/', (req, res) => {
   return res.status(200).json({ message: 'Welcome to the we roam bags store' });
@@ -18,6 +19,7 @@ app.get('/', (req, res) => {
 
 app.use('/api/v1/bag', bagRoutes);
 app.use('/api/v1/blog', blogRoutes);
+app.use('/api/v1/order', orderRoutes);
 
 app.all('*', (req, res) => {
   return res.status(404).json({

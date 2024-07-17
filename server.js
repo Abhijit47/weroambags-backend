@@ -3,7 +3,7 @@ const app = require('./app');
 
 const MONGO_URI = process.env.DATABASE_URI;
 const MONGO_PASSWORD = process.env.DATABASE_PASSWORD;
-const DB = MONGO_URI.replace('<PASSWORD>', MONGO_PASSWORD);
+const DB = MONGO_URI.replace('<password>', MONGO_PASSWORD);
 const PORT = process.env.PORT || 5000;
 
 mongoose
