@@ -138,8 +138,8 @@ exports.createPaymentLink = async (req, res, next) => {
     return res.status(200).json({
       status: 'success',
       data: {
-        // payLink: paymentLink.short_url,
-        paymentLink,
+        payLink: paymentLink.short_url,
+        // paymentLink,
       },
     });
   } catch (err) {
@@ -215,7 +215,7 @@ exports.verifyPayment = async (req, res, next) => {
     const transaction = await Transaction.create(transactionObj);
 
     if (!transaction) {
-      return res.status(500).json({
+      return res.status(400).json({
         status: 'fail',
         message: 'Transaction not created',
       });
