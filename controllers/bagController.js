@@ -338,14 +338,21 @@ exports.deleteBag = async (req, res, next) => {
 
     // console.log('images', images);
 
-    images.forEach(async (image) => {
-      const imageName = image.split('/').pop();
-      const folderName = join(process.cwd(), 'public', 'bags');
+    if (images.length >= 0) {
+      images.forEach(async (image) => {
+        const imageName = image.split('/').pop();
+        const folderName = join(process.cwd(), 'public', 'bags');
 
-      // console.log('', folderName, imageName);
+        // console.log('', folderName, imageName);
 
-      await unlink(join(folderName, imageName));
-    });
+        // images are existing
+        if (existsSync(join(folderName, imageName))) {
+          await unlink(join(folderName, imageName));
+        }
+
+        // await unlink(join(folderName, imageName));
+      });
+    }
 
     const deleteBag = await Bag.findByIdAndDelete(bagId)
       .lean()

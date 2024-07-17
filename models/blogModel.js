@@ -1,17 +1,22 @@
-const moongose = require('mongoose');
+const mongoose = require('mongoose');
 
-const blogSchema = new moongose.Schema(
+const { ObjectId } = mongoose.Schema.Types;
+
+const blogSchema = new mongoose.Schema(
   {
     title: {
       type: String,
-      required: [true, 'Blog title is required'],
-      unique: true,
+      // required: [true, 'Blog title is required'],
+      // unique: true,
       trim: true,
     },
-    content: {
+    cover: {
       type: String,
-      required: [true, 'Blog content is required'],
-      trim: true,
+      required: [true, 'Blog cover image is required'],
+    },
+    contents: {
+      type: [ObjectId],
+      ref: 'Content',
     },
   },
   {
@@ -20,6 +25,6 @@ const blogSchema = new moongose.Schema(
   }
 );
 
-const Blog = moongose.model('Blog', blogSchema);
+const Blog = mongoose.model('Blog', blogSchema);
 
 module.exports = Blog;

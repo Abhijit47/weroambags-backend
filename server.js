@@ -16,6 +16,8 @@ mongoose
     console.log(err.message);
   });
 
+mongoose.set('strictPopulate', false);
+
 app.listen(PORT, () => {
   console.log('app running on port:', PORT);
 });
