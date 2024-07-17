@@ -4,14 +4,20 @@ const router = express.Router();
 
 const orderControllers = require('../controllers/orderControllers');
 
-router.get('/', orderControllers.getOrders);
+router.get('/get-orders', orderControllers.getOrders);
 
-router.post('/', orderControllers.createOrder);
+router.post(
+  '/create-order',
+  orderControllers.createOrder,
+  orderControllers.createPaymentLink
+);
 
-router.get('/:id', orderControllers.getOrderById);
+router.post('/verify-payment', orderControllers.verifyPayment);
 
-router.patch('/:id', orderControllers.updateOrderById);
+router.get('/get-order/:id', orderControllers.getOrderById);
 
-router.delete('/:id', orderControllers.deleteOrderById);
+router.patch('/update-order/:id', orderControllers.updateOrderById);
+
+router.delete('/delete-order/:id', orderControllers.deleteOrderById);
 
 module.exports = router;
