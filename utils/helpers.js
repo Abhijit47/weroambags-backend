@@ -52,10 +52,20 @@ function generateSignature(order_id, razorpay_payment_id, secret) {
   return generated_signature;
 }
 
+function successResponse(res, statusCode, status, message, data) {
+  return res.status(statusCode).json({ status, message, data });
+}
+
+function errorResponse(res, statusCode, status, message, error) {
+  return res.status(statusCode).json({ status, message, error });
+}
+
 module.exports = {
   randomId,
   fileNameInKebabCase,
   isStringifiedJSON,
   getFutureTimestamp,
   generateSignature,
+  successResponse,
+  errorResponse,
 };

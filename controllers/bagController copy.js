@@ -1,22 +1,12 @@
 const { writeFile, unlink } = require('fs/promises');
 const { existsSync, mkdirSync } = require('fs');
 const { join } = require('path');
-const NodeCache = require('node-cache');
-const myCache = new NodeCache({ stdTTL: 60 * 60 });
-
-// const memoryUsage = process.memoryUsage();
-// console.log('memoryUsage', memoryUsage);
-
 const { categories, subCategories } = require('../models/enums');
 
 const multer = require('multer');
 
 const Bag = require('../models/bagsModel');
-const {
-  randomId,
-  successResponse,
-  errorResponse,
-} = require('../utils/helpers');
+const { randomId } = require('../utils/helpers');
 
 const multerStorage = multer.memoryStorage();
 
@@ -36,221 +26,51 @@ const upload = multer({
 exports.uploadBagsImage = upload.array('thumbnail', 3);
 
 exports.getBags = async (req, res, next) => {
-  // check all the keys in the cache
-  const mykeys = myCache.keys();
-
-  // console.log(mykeys);
   try {
-    const { q, search, page } = req.query;
-
-    // if (!q && !search && !page) {
-    //   return res.status(400).json({ message: 'Invalid query' });
-    // }
-
-    // check if the query is a category or subcategory
     // filter the bags
+    const { q } = req.query;
+
     if (categories.includes(q) || subCategories.includes(q)) {
-      // check if the cache has the data
-      const cacheKey = q;
-      const cacheValue = myCache.get(cacheKey);
+      const categorisedBags = await Bag.find({ category: q })
+        .lean()
+        .select('-updatedAt');
 
-      if (cacheValue) {
-        return successResponse(
-          res,
-          200,
-          'success',
-          'Successfully get bags',
-          cacheValue
-        );
-      } else {
-        const categorisedBags = await Bag.find({ category: q })
-          .lean()
-          .select('-updatedAt');
-
-        // set the cache
-        myCache.set(cacheKey, categorisedBags, 3600);
-
-        if (!categorisedBags) {
-          return errorResponse(res, 404, 'fail', 'No bags found');
-        }
-
-        return successResponse(
-          res,
-          200,
-          'success',
-          'Successfully get bags',
-          categorisedBags
-        );
+      if (!categorisedBags) {
+        return res.status(200).json({ status: 'success', categorisedBags });
       }
+
+      return res.status(200).json({ status: 'success', categorisedBags });
     }
 
-    // check if the search query is available
-    if (search) {
-      // check if the cache has the data
-      const cacheKey = search;
-      const cacheValue = myCache.get(cacheKey);
+    const bags = await Bag.find({}).lean().select('-updatedAt');
 
-      if (cacheValue) {
-        return successResponse(
-          res,
-          200,
-          'success',
-          'Successfully get bags',
-          cacheValue
-        );
-      } else {
-        const searchBags = await Bag.find({
-          $or: [
-            { title: { $regex: search, $options: 'i' } },
-            { category: { $regex: search, $options: 'i' } },
-            { subCategory: { $regex: search, $options: 'i' } },
-          ],
-        })
-          .lean()
-          .select('-updatedAt');
-
-        // set the cache
-        myCache.set(cacheKey, searchBags, 3600);
-
-        if (!searchBags) {
-          return errorResponse(res, 404, 'fail', 'No bags found');
-        }
-
-        return successResponse(
-          res,
-          200,
-          'success',
-          'Successfully get bags',
-          searchBags
-        );
-      }
+    if (!bags) {
+      return res.status(404).json({ message: 'No bags found' });
     }
 
-    // pagination
-    if (page) {
-      if (page < 1) {
-        return res.status(400).json({ message: 'Invalid page number' });
-      }
-
-      const cacheKey = `page-${page}`;
-      const cacheValue = myCache.get(cacheKey);
-
-      const limit = 10;
-      const skip = (page - 1) * limit;
-      const totalBags = await Bag.countDocuments();
-      const totalPages = Math.ceil(totalBags / limit);
-      const nextPage = page < totalPages ? Number(page) + 1 : null;
-      const prevPage = page > 1 ? page - 1 : null;
-      const currentPage = Number(page);
-
-      if (cacheValue) {
-        return successResponse(res, 200, 'success', 'Successfully get bags', {
-          totalBags,
-          totalPages,
-          nextPage,
-          currentPage,
-          prevPage,
-          bags: cacheValue,
-        });
-      } else {
-        const bags = await Bag.find({})
-          .lean()
-          .select('-updatedAt')
-          .limit(limit)
-          .skip(skip);
-
-        if (!bags) {
-          return errorResponse(res, 404, 'fail', 'No bags found');
-        }
-
-        // set the cache
-        myCache.set(cacheKey, bags, 3600);
-
-        return successResponse(res, 200, 'success', 'Successfully get bags', {
-          totalBags,
-          totalPages,
-          nextPage,
-          currentPage,
-          prevPage,
-          bags,
-        });
-      }
-    }
-
-    // check if the cache has the data
-    const cacheValue = myCache.get('allBags');
-
-    if (cacheValue) {
-      return successResponse(
-        res,
-        200,
-        'success',
-        'Successfully get bags',
-        cacheValue
-      );
-    } else {
-      const bags = await Bag.find({}).lean().select('-updatedAt');
-
-      // set the cache
-      myCache.set('allBags', bags, 3600);
-
-      if (!bags) {
-        return errorResponse(res, 404, 'fail', 'No bags found');
-      }
-
-      return successResponse(
-        res,
-        200,
-        'success',
-        'Successfully get bags',
-        bags
-      );
-    }
+    return res.status(200).json({ status: 'success', bags });
   } catch (error) {
-    console.error(error.name);
-    console.error(error.message);
-    console.error(error.stack);
-
-    return errorResponse(res, 500, 'fail', error.message);
+    return res.status(500).json({ message: error.message });
   }
 };
 
 exports.getBag = async (req, res, next) => {
   try {
     const bagId = req.params.id;
+
     if (!bagId || bagId.length < 24) {
-      return errorResponse(res, 400, 'fail', 'Invalid bag ID');
+      return res.status(400).json({ message: 'Invalid bag ID' });
     }
 
-    const cacheKey = bagId;
-    const cachedValue = myCache.get(cacheKey);
+    const bag = await Bag.findById(bagId).lean().select('-updatedAt');
 
-    if (cachedValue) {
-      return successResponse(
-        res,
-        200,
-        'success',
-        'Successfully get bag',
-        cachedValue
-      );
-    } else {
-      const bag = await Bag.findById(bagId).lean().select('-updatedAt');
-
-      if (!bag) {
-        return errorResponse(res, 404, 'fail', 'Bag not found');
-      }
-
-      // set the cache
-      myCache.set(cacheKey, bag, 3600);
-
-      return successResponse(res, 200, 'success', 'Successfully get bag', bag);
+    if (!bag) {
+      return res.status(404).json({ message: 'Bag not found' });
     }
+
+    return res.status(200).json({ status: 'success', bag });
   } catch (error) {
-    console.error(error.name);
-    console.error(error.message);
-    console.error(error.stack);
-
-    return errorResponse(res, 500, 'fail', error.message);
+    return res.status(500).json({ message: error.message });
   }
 };
 
@@ -303,11 +123,13 @@ exports.createBag = async (req, res, next) => {
       !description ||
       !specifications
     ) {
-      return errorResponse(res, 400, 'fail', 'Please provide all the details');
+      return res
+        .status(400)
+        .json({ message: 'Please provide all the details' });
     }
 
     if (req.files.length <= 0) {
-      return errorResponse(res, 400, 'fail', 'Please upload thumbnails');
+      return res.status(400).json({ message: 'Please upload thumbnails' });
     }
 
     let id = randomId();
@@ -377,19 +199,12 @@ exports.createBag = async (req, res, next) => {
     // reset the id
     id = '';
 
-    return successResponse(
-      res,
-      201,
-      'success',
-      'Bag added to your collection',
-      newBag
-    );
+    return res
+      .status(201)
+      .json({ message: 'Bag added to your collection', newBag });
   } catch (error) {
-    console.error(error.name);
-    console.error(error.message);
-    console.error(error.stack);
-
-    return errorResponse(res, 500, 'fail', error.message);
+    console.log('error from create endpont', error);
+    return res.status(500).json({ message: error.message });
   }
 };
 
@@ -398,7 +213,7 @@ exports.updateBag = async (req, res, next) => {
     const bagId = req.params.id;
 
     if (!bagId || bagId.length < 24) {
-      return errorResponse(res, 400, 'fail', 'Invalid bag ID');
+      return res.status(400).json({ message: 'Invalid bag ID' });
     }
 
     const {
@@ -418,7 +233,7 @@ exports.updateBag = async (req, res, next) => {
 
     const existingBag = await Bag.findById({ _id: bagId }).lean();
     if (!existingBag) {
-      return errorResponse(res, 404, 'fail', 'Bag not found for update');
+      return res.status(404).json({ message: 'Bag not found for update' });
     }
 
     let newImages = undefined;
@@ -506,7 +321,7 @@ exports.updateBag = async (req, res, next) => {
     ).lean();
 
     if (!updatedBag) {
-      return errorResponse(res, 404, 'fail', 'Bag not found');
+      return res.status(404).json({ message: 'Bag not found' });
     }
 
     // Reset the id
@@ -515,41 +330,24 @@ exports.updateBag = async (req, res, next) => {
     // Return the image
     newImages = undefined;
 
-    // check if the cache has the data
-    const cacheKey = bagId;
-    const cacheValue = myCache.get(cacheKey);
-
-    if (cacheValue) {
-      myCache.del(cacheKey);
-    }
-
-    return successResponse(
-      res,
-      200,
-      'success',
-      'Successfully updated bag',
-      updatedBag
-    );
+    return res.status(200).json({ message: 'Update a bag', updatedBag });
   } catch (error) {
-    console.error(error.name);
-    console.error(error.message);
-    console.error(error.stack);
-
-    return errorResponse(res, 500, 'fail', error.message);
+    return res.status(500).json({ message: error.message });
   }
 };
 
 exports.deleteBag = async (req, res, next) => {
   try {
     const bagId = req.params.id;
+
     if (!bagId || bagId.length < 24) {
-      return errorResponse(res, 400, 'fail', 'Invalid bag ID');
+      return res.status(400).json({ message: 'Invalid bag ID' });
     }
 
     const existingBag = await Bag.findById(bagId).lean();
 
     if (!existingBag) {
-      return errorResponse(res, 404, 'fail', 'Bag not found');
+      return res.status(404).json({ message: 'Bag not found' });
     }
 
     const images = existingBag.thumbnail;
@@ -577,30 +375,14 @@ exports.deleteBag = async (req, res, next) => {
       .select('-updatedAt');
 
     if (!deleteBag) {
-      return errorResponse(res, 404, 'fail', 'Bag not found for delete');
+      return res.status(404).json({ message: 'Bag not found for delete' });
     }
 
-    // check if the cache has the data
-    const cacheKey = bagId;
-    const cacheValue = myCache.get(cacheKey);
-
-    if (cacheValue) {
-      myCache.del(cacheKey);
-    }
-
-    return successResponse(
-      res,
-      200,
-      'success',
-      'Successfully deleted bag',
-      deleteBag._id
-    );
+    return res
+      .status(200)
+      .json({ message: 'Successfully deleted bag', deletedBag: deleteBag._id });
   } catch (error) {
-    console.error(error.name);
-    console.error(error.message);
-    console.error(error.stack);
-
-    return errorResponse(res, 500, 'fail', error.message);
+    return res.status(500).json({ message: error.message });
   }
 };
 
