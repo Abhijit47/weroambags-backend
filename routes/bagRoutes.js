@@ -20,4 +20,8 @@ router.route('/delete-bag/:id').delete(bagController.deleteBag);
 
 router.route('/downloadImages').post(bagController.downloadImages);
 
+router.route('/get-categories').get(bagController.getCategories);
+
+router.route('/get-sub-categories').get(bagController.getSubCategories);
+
 module.exports = router;

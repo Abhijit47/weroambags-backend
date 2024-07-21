@@ -9,7 +9,10 @@ const multer = require('multer');
 // console.log('memoryUsage', memoryUsage);
 const { categories, subCategories } = require('../models/enums');
 
-const Bag = require('../models/bagsModel');
+const Bag = require('../models/bagModel');
+const Category = require('../models/categoryModel');
+const SubCategory = require('../models/subCategoryModel');
+
 const {
   randomId,
   successResponse,
@@ -73,7 +76,10 @@ exports.getBags = async (req, res, next) => {
       } else {
         const categorisedBags = await Bag.find({ category: q })
           .lean()
-          .select('-updatedAt');
+          .select('-updatedAt')
+          .populate('category', 'name')
+          .populate('subCategory', 'name')
+          .exec();
 
         // set the cache
         bagCache.set(cacheKey, categorisedBags, 3600);
@@ -122,7 +128,10 @@ exports.getBags = async (req, res, next) => {
           .sort({ createdAt: -1 })
           .limit(limit)
           .skip(skip)
-          .select('-updatedAt');
+          .select('-updatedAt')
+          .populate('category', 'name')
+          .populate('subCategory', 'name')
+          .exec();
 
         // set the cache
         bagCache.set(cacheKey, searchBags, 3600);
@@ -143,57 +152,6 @@ exports.getBags = async (req, res, next) => {
       }
     }
 
-    // pagination
-    // if (page) {
-    //   if (page < 1) {
-    //     return res.status(400).json({ message: 'Invalid page number' });
-    //   }
-
-    //   const cacheKey = `page-${page}`;
-    //   const cacheValue = bagCache.get(cacheKey);
-
-    //   const limit = 10;
-    //   const skip = (page - 1) * limit;
-    //   const totalBags = await Bag.countDocuments();
-    //   const totalPages = Math.ceil(totalBags / limit);
-    //   const nextPage = page < totalPages ? Number(page) + 1 : null;
-    //   const prevPage = page > 1 ? page - 1 : null;
-    //   const currentPage = Number(page);
-
-    //   if (cacheValue) {
-    //     return successResponse(res, 200, 'success', 'Successfully get bags', {
-    //       totalBags,
-    //       totalPages,
-    //       nextPage,
-    //       currentPage,
-    //       prevPage,
-    //       bags: cacheValue,
-    //     });
-    //   } else {
-    //     const bags = await Bag.find({})
-    //       .lean()
-    //       .select('-updatedAt')
-    //       .limit(limit)
-    //       .skip(skip);
-
-    //     if (!bags) {
-    //       return errorResponse(res, 404, 'fail', 'No bags found');
-    //     }
-
-    //     // set the cache
-    //     bagCache.set(cacheKey, bags, 3600);
-
-    //     return successResponse(res, 200, 'success', 'Successfully get bags', {
-    //       totalBags,
-    //       totalPages,
-    //       nextPage,
-    //       currentPage,
-    //       prevPage,
-    //       bags,
-    //     });
-    //   }
-    // }
-
     // check if the cache has the data
     const cacheValue = bagCache.get('allBags');
 
@@ -213,7 +171,10 @@ exports.getBags = async (req, res, next) => {
         .sort({ createdAt: -1 })
         .limit(limit)
         .skip(skip)
-        .select('-updatedAt');
+        .select('-updatedAt')
+        .populate('category', 'name')
+        .populate('subCategory', 'name')
+        .exec();
 
       if (!bags) {
         return errorResponse(res, 404, 'fail', 'No bags found');
@@ -256,7 +217,12 @@ exports.getBag = async (req, res, next) => {
         bag: cachedValue,
       });
     } else {
-      const bag = await Bag.findById(bagId).lean().select('-updatedAt');
+      const bag = await Bag.findById(bagId)
+        .lean()
+        .select('-updatedAt')
+        .populate('category', 'name')
+        .populate('subCategory', 'name')
+        .exec();
 
       if (!bag) {
         return errorResponse(res, 404, 'fail', 'Bag not found');
@@ -310,6 +276,8 @@ exports.createBag = async (req, res, next) => {
       description,
       specifications,
     } = req.body;
+
+    // console.log('reqBody', req.body);
 
     if (
       !title ||
@@ -385,35 +353,91 @@ exports.createBag = async (req, res, next) => {
       available,
       sold,
       thumbnail: images,
-      category,
-      subCategory,
+      // category,
+      // subCategory,
       quantity,
       reviewsCount,
       description,
       specifications,
     };
 
-    // create a bag
-    const newBag = await Bag.create(obj);
+    const [newBag, newCategory, newSubCategory] = await Promise.all([
+      Bag.create(obj),
+      Category.create({
+        name: category,
+      }),
+      SubCategory.create({
+        name: JSON.parse(subCategory),
+      }),
+    ]);
 
-    // reset the id
-    id = '';
-
-    // check if the cache has the data
-    const cacheKeys = bagCache.keys();
-
-    if (cacheKeys.length > 0) {
-      bagCache.flushAll();
-      bagCache.flushStats();
+    if (!newBag || !newCategory || !newSubCategory) {
+      return errorResponse(res, 400, 'fail', 'Bag not created');
     }
 
-    return successResponse(
-      res,
-      201,
-      'success',
-      'Bag added to your collection',
-      newBag
-    );
+    // create a bag
+    // const newBag = await Bag.create(obj);
+
+    // create a category
+    // const newCategory = await Category.create({
+    //   name: category,
+    // });
+
+    // create a subcategory
+    // const newSubCategory = await SubCategory.create({
+    //   name: subCategory,
+    // });
+
+    // update the bag with the category and subcategory
+    if (newBag && newCategory && newSubCategory) {
+      // console.log('newBag', newBag._id);
+      // console.log('newCategory', newCategory._id);
+      // console.log('newSubCategory', newSubCategory._id);
+      const [updatedBag] = await Promise.all([
+        Bag.findOneAndUpdate(
+          { _id: newBag._id },
+          {
+            $set: {
+              category: newCategory._id,
+              subCategory: newSubCategory._id,
+            },
+          },
+          { new: true }
+        ),
+        Category.findOneAndUpdate(
+          { _id: newCategory._id },
+          {
+            $set: { subCategories: newSubCategory._id },
+            $push: { bags: newBag._id },
+          },
+          { new: true }
+        ),
+        SubCategory.findOneAndUpdate(
+          { _id: newSubCategory._id },
+          { $set: { category: newCategory._id }, $push: { bags: newBag._id } },
+          { new: true }
+        ),
+      ]);
+
+      // reset the id
+      id = '';
+
+      // check if the cache has the data
+      const cacheKeys = bagCache.keys();
+
+      if (cacheKeys.length > 0) {
+        bagCache.flushAll();
+        bagCache.flushStats();
+      }
+
+      return successResponse(
+        res,
+        201,
+        'success',
+        'Bag added to your collection',
+        updatedBag
+      );
+    }
   } catch (error) {
     console.error(error.name);
     console.error(error.message);
@@ -536,8 +560,35 @@ exports.updateBag = async (req, res, next) => {
     ).lean();
 
     if (!updatedBag) {
-      return errorResponse(res, 404, 'fail', 'Bag not found');
+      return errorResponse(res, 404, 'fail', 'Something went wrong!');
     }
+
+    // update the bag with the category and subcategory
+    // const [updatedCategory, updatedSubCategory] = await Promise.all([
+    //   Category.findOneAndUpdate(
+    //     { category: updatedBag.category },
+    //     {
+    //       $set: { name: category },
+    //     },
+    //     { new: true }
+    //   ),
+    //   SubCategory.findOneAndUpdate(
+    //     { subCategory: updatedBag.subCategory },
+    //     {
+    //       $set: { name: JSON.parse(subCategory) },
+    //     },
+    //     { new: true }
+    //   ),
+    // ]);
+
+    // if (!updatedCategory || !updatedSubCategory) {
+    //   return errorResponse(
+    //     res,
+    //     404,
+    //     'fail',
+    //     'Category or SubCategory not found'
+    //   );
+    // }
 
     // Reset the id
     id = '';
@@ -664,3 +715,131 @@ exports.downloadImages = async (req, res, next) => {
     return res.status(500).json({ message: error.message });
   }
 };
+
+exports.getCategories = async (req, res, next) => {
+  try {
+    // check if the cache has the data
+    const cacheKey = 'categories';
+    const cacheValue = bagCache.get(cacheKey);
+
+    if (cacheValue) {
+      return successResponse(
+        res,
+        200,
+        'success',
+        'Successfully get categories',
+        {
+          categories: cacheValue,
+        }
+      );
+    } else {
+      const categories = await Category.find({})
+        .lean()
+        .populate('bags', '-updatedAt -category -subCategory -createdAt')
+        .populate('subCategories', 'name')
+        .select('-updatedAt')
+        .exec();
+
+      if (!categories) {
+        return errorResponse(res, 404, 'fail', 'No categories found');
+      }
+
+      // set the cache
+      bagCache.set(cacheKey, categories, 3600);
+
+      return successResponse(
+        res,
+        200,
+        'success',
+        'Successfully get categories',
+        {
+          categories,
+        }
+      );
+    }
+  } catch (error) {
+    console.error(error.name);
+    console.error(error.message);
+    console.error(error.stack);
+
+    return errorResponse(res, 500, 'fail', error.message);
+  }
+};
+
+exports.getSubCategories = async (req, res, next) => {
+  try {
+    // check if the cache has the data
+    const cacheKey = 'subCategories';
+    const cacheValue = bagCache.get(cacheKey);
+
+    if (cacheValue) {
+      return successResponse(
+        res,
+        200,
+        'success',
+        'Successfully get sub-categories',
+        {
+          subCategories: cacheValue,
+        }
+      );
+    } else {
+      const subCategories = await SubCategory.find()
+        .lean()
+        .select('-updatedAt')
+        .populate('bags', '-updatedAt -category -subCategory -createdAt')
+        .populate('category', 'name')
+        .exec();
+
+      if (!subCategories) {
+        return errorResponse(res, 404, 'fail', 'No sub-categories found');
+      }
+
+      // set the cache
+      bagCache.set(cacheKey, subCategories, 3600);
+
+      return successResponse(
+        res,
+        200,
+        'success',
+        'Successfully get sub-categories',
+        {
+          subCategories,
+        }
+      );
+    }
+  } catch (error) {
+    console.error(error.name);
+    console.error(error.message);
+    console.error(error.stack);
+
+    return errorResponse(res, 500, 'fail', error.message);
+  }
+};
+
+// exports.createCategory = async (req, res, next) => { };
+
+// exports.createSubCategory = async (req, res, next) => { };
+
+exports.updateCategory = async (req, res, next) => {};
+
+exports.updateSubCategory = async (req, res, next) => {};
+
+async function deleteBags() {
+  try {
+    const deleteBags = await Bag.deleteMany();
+    const deleteCategories = await Category.deleteMany();
+    const deleteSubCategories = await SubCategory.deleteMany();
+    console.log(
+      'deleteBags',
+      deleteBags,
+      deleteCategories,
+      deleteSubCategories
+    );
+  } catch (error) {
+    console.error(error.name);
+    console.error(error.message);
+    console.error(error.stack);
+  }
+}
+
+// deleteBags();

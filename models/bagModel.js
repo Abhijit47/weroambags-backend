@@ -1,6 +1,8 @@
 const mongoose = require('mongoose');
 const { categories, subCategories } = require('./enums');
 
+const { ObjectId } = mongoose.Schema.Types;
+
 /*
 "title": "default"
 "oldPrice": "50"
@@ -9,8 +11,8 @@ const { categories, subCategories } = require('./enums');
 "available":"100"
 "sold": "50"
 "missing" thumbnail
-"category": "Backpack"
-"subCategory": "Daypack"
+"category": "backpack"
+"subCategory": '["daypack", "office-bags", "school-bags"]'
 "quantity": "1"
 "reviewsCount": "20"
 "description": "Etiam cursus scelerisque massa, ac facilisis sapien pharetra eu. Duis sollicitudin massa a felis elementum elementum vel vel quam. Nullam convallis auctor condimentum. Pellentesque blandit ex sit amet tellus rhoncus sollicitudin. Quisque scelerisque quis lorem a ullamcorper. Donec quis porta magna. Mauris molestie erat est ac accumsan."
@@ -24,6 +26,7 @@ const bagSchema = new mongoose.Schema(
       required: [true, 'Please provide a title'],
       trim: true,
       lowercase: true,
+      unique: true,
       min: [3, 'Title must be at least 3 characters'],
       max: [50, 'Title must be at most 50 characters'],
     },
@@ -61,20 +64,30 @@ const bagSchema = new mongoose.Schema(
       //   'https://placehold.co/600x400/png',
       // ],
     },
+    // category: {
+    //   type: String,
+    //   enum: {
+    //     values: categories,
+    //     message: '{VALUE} invalid category',
+    //   },
+    // },
     category: {
-      type: String,
-      enum: {
-        values: categories,
-        message: '{VALUE} invalid category',
-      },
+      type: ObjectId,
+      ref: 'Category',
+      // required: [true, 'Please provide a category'],
     },
     subCategory: {
-      type: String,
-      enum: {
-        values: subCategories,
-        message: '{VALUE} invalid sub-category',
-      },
+      type: ObjectId,
+      ref: 'SubCategory',
+      // required: [true, 'Please provide a sub-category'],
     },
+    // subCategory: {
+    //   type: String,
+    //   enum: {
+    //     values: subCategories,
+    //     message: '{VALUE} invalid sub-category',
+    //   },
+    // },
     quantity: {
       type: String,
       required: [true, 'Please provide a quantity'],
@@ -103,6 +116,6 @@ const bagSchema = new mongoose.Schema(
   }
 );
 
-const Bag = mongoose.model('bag', bagSchema);
+const Bag = mongoose.model('Bag', bagSchema);
 
 module.exports = Bag;

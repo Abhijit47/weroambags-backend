@@ -13,49 +13,47 @@ exports.createContact = async (req, res, next) => {
       return errorResponse(res, 400, 'Bad Request', 'All fields are required');
     }
 
-    // Check if email already exists
-    const existingContact = await ContactUs.find({ email });
-    if (existingContact) {
-      return errorResponse(
+    // Check if email or phone number already exists
+    const existingUser = await ContactUs.find({
+      $or: [{ phoneNo }, { email }],
+    }).lean();
+
+    // const existingContact = await ContactUs.find({ email });
+    if (existingUser.length === 0) {
+      const newContact = await ContactUs.create({
+        firstName,
+        lastName,
+        email,
+        phoneNo,
+        message,
+      });
+
+      if (!newContact) {
+        return errorResponse(
+          res,
+          500,
+          'Something went wrong',
+          'An error occurred while creating contact'
+        );
+      }
+
+      // check if the contact is already in the cache
+      const cacheKeys = contactCache.keys();
+      if (cacheKeys) {
+        contactCache.flushAll();
+        contactCache.flushStats();
+      }
+
+      return successResponse(
         res,
-        409,
-        'fail',
-        'email already exists',
-        existingContact.email
+        201,
+        'success',
+        'Contact created successfully',
+        newContact._id
       );
+    } else {
+      return errorResponse(res, 409, 'fail', 'email or phone already exists');
     }
-
-    const newContact = await ContactUs.create({
-      firstName,
-      lastName,
-      email,
-      phoneNo,
-      message,
-    });
-
-    if (!newContact) {
-      return errorResponse(
-        res,
-        500,
-        'Something went wrong',
-        'An error occurred while creating contact'
-      );
-    }
-
-    // check if the contact is already in the cache
-    const cacheKeys = contactCache.keys();
-    if (cacheKeys) {
-      contactCache.flushAll();
-      contactCache.flushStats();
-    }
-
-    return successResponse(
-      res,
-      201,
-      'success',
-      'Contact created successfully',
-      newContact._id
-    );
   } catch (error) {
     console.error(error.name);
     console.error(error.message);
