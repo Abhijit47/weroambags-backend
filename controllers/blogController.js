@@ -2,11 +2,21 @@ const { writeFile, unlink } = require('fs/promises');
 const { existsSync, mkdirSync } = require('fs');
 const { join } = require('path');
 
+const NodeCache = require('node-cache');
 const multer = require('multer');
 
 const Blog = require('../models/blogModel');
 const Contents = require('../models/contentsModel');
-const { randomId, fileNameInKebabCase } = require('../utils/helpers');
+
+const {
+  randomId,
+  fileNameInKebabCase,
+  successResponse,
+  errorResponse,
+} = require('../utils/helpers');
+
+// Initialize the cache
+const blogCache = new NodeCache({ stdTTL: 60 * 60 });
 
 const multerStorage = multer.memoryStorage();
 
@@ -89,57 +99,221 @@ exports.createBlog = async (req, res, next) => {
     // Reset the id
     // id = '';
 
+    // Clear the cache if it exists
+    const cacheKey = blogCache.keys();
+    if (cacheKey) {
+      blogCache.flushAll();
+      blogCache.flushStats();
+      // blogCache.del('blogs');
+    }
+
     return res.status(201).json({
       status: 'success',
       message: 'Successfully created blog post.',
       data: updateBlogWithContents,
     });
   } catch (error) {
-    return res.status(500).json({ message: error.message });
+    console.error(error.name);
+    console.error(error.message);
+    console.error(error.stack);
+
+    return errorResponse(res, 500, 'error', error.message, error);
   }
 };
 
 // GET BLOGS
 exports.getBlogs = async (req, res, next) => {
+  const keys = blogCache.keys();
+  // console.log('key', keys);
   try {
-    const blogs = await Blog.find({})
-      .lean()
-      .select('-updatedAt')
-      .populate('contents', 'title description')
-      .exec();
+    const { page, search } = req.query;
 
-    if (!blogs) {
-      return res.status(404).json({ message: 'success', blogs });
+    const pageNo = page || 1;
+
+    // Check if the cache is empty
+    const cacheKey = 'blogs';
+    const countCacheKey = 'count';
+    const cacheCount = blogCache.get(countCacheKey);
+    const cacheValue = blogCache.get(cacheKey);
+    const limit = 10;
+    let totalBlogs = 0;
+    const skip = pageNo === 1 ? 0 : (pageNo - 1) * limit;
+    const totalPages = Math.ceil(totalBlogs / limit);
+    const nextPage = pageNo < totalPages ? Number(pageNo) + 1 : null;
+    const prevPage = pageNo > 1 ? pageNo - 1 : null;
+    const currentPage = Number(pageNo);
+
+    if (search) {
+      const cacheKey = `search-${search}`;
+      const cacheValue = blogCache.get(cacheKey);
+
+      if (cacheValue) {
+        return successResponse(
+          res,
+          200,
+          'success',
+          'Successfully retrieved blogs',
+          {
+            totalBlogs: cacheCount,
+            totalPages,
+            nextPage,
+            prevPage,
+            currentPage,
+            blogs: cacheValue,
+          }
+        );
+      } else {
+        const blogs = await Blog.find({
+          title: { $regex: search, $options: 'i' },
+        })
+          .sort({ createdAt: -1 })
+          .lean()
+          .select('-updatedAt')
+          .skip(skip)
+          .limit(limit)
+          .populate('contents', 'title description')
+          .exec();
+
+        if (!blogs) {
+          return errorResponse(res, 404, 'success', 'No blogs found');
+        }
+
+        totalBlogs = await Blog.countDocuments({
+          title: { $regex: search, $options: 'i' },
+        });
+
+        // Set the cache
+        blogCache.set(cacheKey, blogs, 3600);
+
+        // Set the count cache
+        blogCache.set(countCacheKey, totalBlogs, 3600);
+
+        return successResponse(
+          res,
+          200,
+          'success',
+          'Successfully retrieved blogs',
+          {
+            totalBlogs,
+            totalPages,
+            nextPage,
+            prevPage,
+            currentPage,
+            blogs,
+          }
+        );
+      }
     }
 
-    return res.status(200).json({ blogs });
+    if (cacheValue) {
+      return successResponse(
+        res,
+        200,
+        'success',
+        'Successfully retrieved blogs',
+        {
+          totalBlogs: cacheCount,
+          totalPages,
+          nextPage,
+          prevPage,
+          currentPage,
+          blogs: cacheValue,
+        }
+      );
+    } else {
+      const blogs = await Blog.find()
+        .lean()
+        .select('-updatedAt')
+        .skip(skip)
+        .limit(limit)
+        .populate('contents', 'title description')
+        .exec();
+
+      if (!blogs) {
+        return errorResponse(res, 404, 'success', 'No blogs found');
+      }
+
+      totalBlogs = await Blog.countDocuments();
+
+      // Set the cache
+      blogCache.set(cacheKey, blogs, 3600);
+
+      // Set the count cache
+      blogCache.set(countCacheKey, totalBlogs, 3600);
+
+      return successResponse(
+        res,
+        200,
+        'success',
+        'Successfully retrieved blogs',
+        {
+          totalBlogs,
+          totalPages,
+          nextPage,
+          prevPage,
+          currentPage,
+          blogs,
+        }
+      );
+    }
   } catch (error) {
-    return res.status(500).json({ message: error.message });
+    console.error(error.name);
+    console.error(error.message);
+    console.error(error.stack);
+
+    return errorResponse(res, 500, 'error', error.message, error);
   }
 };
 
 // GET BLOG
 exports.getBlog = async (req, res, next) => {
+  const keys = blogCache.keys();
+  // console.log('key', keys);
   try {
     const { id } = req.params;
-
     if (!id || id <= 24) {
-      return res.status(400).json({ message: 'Please provide a valid id.' });
+      return errorResponse(res, 400, 'fail', 'Please provide a valid id.', id);
     }
 
-    const blog = await Blog.findById({ _id: id })
-      .lean()
-      .select('-updatedAt')
-      .populate('contents', 'title description')
-      .exec();
+    const cacheKey = `blog-${id}`;
+    const cacheValue = blogCache.get(cacheKey);
 
-    if (!blog) {
-      return res.status(404).json({ message: 'Blog not found' });
+    if (cacheValue) {
+      return successResponse(
+        res,
+        200,
+        'success',
+        'Successfully retrieved blog',
+        cacheValue
+      );
+    } else {
+      const blog = await Blog.findById({ _id: id })
+        .lean()
+        .select('-updatedAt')
+        .populate('contents', 'title description')
+        .exec();
+
+      if (!blog) {
+        return errorResponse(res, 404, 'fail', 'Blog not found');
+      }
+
+      // Set the cache
+      blogCache.set(cacheKey, blog, 3600);
+
+      return successResponse(
+        res,
+        200,
+        'success',
+        'Successfully retrieved blog',
+        blog
+      );
     }
-
-    return res.status(200).json({ status: 'success', blog });
   } catch (error) {
-    return res.status(500).json({ message: error.message });
+    console.error(error.name);
+    console.error(error.message);
+    console.error(error.stack);
+
+    return errorResponse(res, 500, 'error', error.message, error);
   }
 };
 
@@ -155,18 +329,18 @@ exports.updateBlog = async (req, res, next) => {
 
     // If there no id or is less than 24 characters
     if (!id || id <= 24) {
-      return res.status(400).json({ message: 'Please provide a valid id.' });
+      return errorResponse(res, 400, 'fail', 'Please provide a valid id.', id);
     }
 
     // If there is no title or content
     if (!title) {
-      return res.status(400).json({ message: 'Please provide the title.' });
+      return errorResponse(res, 400, 'fail', 'Please provide the title.');
     }
 
     // find the existing blog
     const existingBlog = await Blog.findById({ _id: id }).lean();
     if (!existingBlog) {
-      return res.status(404).json({ message: 'No Blog found for update.' });
+      return errorResponse(res, 404, 'fail', 'No Blog found for update.');
     }
 
     // if there is a new cover image
@@ -205,17 +379,33 @@ exports.updateBlog = async (req, res, next) => {
     );
 
     if (!updatedBlog) {
-      return res.status(400).json({ message: 'Something went wrong' });
+      return errorResponse(res, 404, 'fail', 'Something went wrong');
     }
 
     // Reset the fileName
     fileName = undefined;
 
-    return res
-      .status(200)
-      .json({ status: 'Successfully updated blog.', updatedBlog });
+    // check if the cache has the data
+    const cacheKey = `blog-${id}`;
+    const cacheValue = blogCache.get(cacheKey);
+
+    if (cacheValue) {
+      blogCache.del(cacheKey);
+    }
+
+    return successResponse(
+      res,
+      200,
+      'success',
+      'Successfully updated blog',
+      updatedBlog
+    );
   } catch (error) {
-    return res.status(500).json({ message: error.message });
+    console.error(error.name);
+    console.error(error.message);
+    console.error(error.stack);
+
+    return errorResponse(res, 500, 'error', error.message, error);
   }
 };
 
@@ -223,16 +413,15 @@ exports.updateBlog = async (req, res, next) => {
 exports.deleteBlog = async (req, res, next) => {
   try {
     const { id } = req.params;
-
     if (!id || id <= 24) {
-      return res.status(400).json({ message: 'Please provide a valid id.' });
+      return errorResponse(res, 400, 'error', 'Please provide a valid id.', id);
     }
 
     // find the existing blog
     const blog = await Blog.findById({ _id: id }).lean();
 
     if (!blog) {
-      return res.status(404).json({ message: 'Blog not found for delete.' });
+      return errorResponse(res, 404, 'error', 'Blog not found for delete.');
     }
 
     // delete the blog cover
@@ -258,12 +447,26 @@ exports.deleteBlog = async (req, res, next) => {
       return res.status(404).json({ message: 'Something went wrong' });
     }
 
-    return res.status(200).json({
-      status: 'success',
-      message: 'Successfully deleted the blog post and its contents',
-    });
+    // check if the cache has the data
+    const cacheKey = `blog-${id}`;
+    const cacheValue = blogCache.get(cacheKey);
+
+    if (cacheValue) {
+      blogCache.del(cacheKey);
+    }
+
+    return successResponse(
+      res,
+      200,
+      'success',
+      'Successfully deleted the blog post and its contents'
+    );
   } catch (error) {
-    return res.status(500).json({ message: error.message });
+    console.error(error.name);
+    console.error(error.message);
+    console.error(error.stack);
+
+    return errorResponse(res, 500, 'error', error.message, error);
   }
 };
 
@@ -273,12 +476,22 @@ exports.getContents = async (req, res, next) => {
     const contents = await Contents.find({}).lean().exec();
 
     if (!contents) {
-      return res.status(404).json({ message: 'success', contents });
+      return errorResponse(res, 404, 'fail', 'No contents found', contents);
     }
 
-    return res.status(200).json({ contents });
+    return successResponse(
+      res,
+      200,
+      'success',
+      'Successfully retrieved contents',
+      contents
+    );
   } catch (error) {
-    return res.status(500).json({ message: error.message });
+    console.error(error.name);
+    console.error(error.message);
+    console.error(error.stack);
+
+    return errorResponse(res, 500, 'error', error.message, error);
   }
 };
 
@@ -286,9 +499,8 @@ exports.getContents = async (req, res, next) => {
 exports.deleteContent = async (req, res, next) => {
   try {
     const { id } = req.params;
-
     if (!id || id <= 24) {
-      return res.status(400).json({ message: 'Please provide a valid id.' });
+      return errorResponse(res, 400, 'error', 'Please provide a valid id.', id);
     }
 
     const deletedContent = await Contents.findByIdAndDelete(
@@ -300,14 +512,26 @@ exports.deleteContent = async (req, res, next) => {
     );
 
     if (!deletedContent) {
-      return res.status(404).json({ message: 'Content not found' });
+      return errorResponse(
+        res,
+        404,
+        'fail',
+        'Content not found',
+        deletedContent
+      );
     }
 
-    return res.status(200).json({
-      status: 'success',
-      message: 'Successfully deleted the content',
-    });
+    return successResponse(
+      res,
+      200,
+      'success',
+      'Successfully deleted the content'
+    );
   } catch (error) {
-    return res.status(500).json({ message: error.message });
+    console.error(error.name);
+    console.error(error.message);
+    console.error(error.stack);
+
+    return errorResponse(res, 500, 'error', error.message, error);
   }
 };
