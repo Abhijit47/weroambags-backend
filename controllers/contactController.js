@@ -14,7 +14,7 @@ exports.createContact = async (req, res, next) => {
     }
 
     // Check if email already exists
-    const existingContact = await ContactUs.find({});
+    const existingContact = await ContactUs.find({ email });
     if (existingContact) {
       return errorResponse(
         res,
@@ -69,7 +69,7 @@ exports.getContacts = async (req, res, next) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
 
-    let totalContacts = 0;
+    const totalContacts = await ContactUs.countDocuments();
     const totalPages = Math.ceil(totalContacts / limit);
     const nextPage = page < totalPages ? page + 1 : null;
     const prevPage = page > 1 ? page - 1 : null;
@@ -106,8 +106,6 @@ exports.getContacts = async (req, res, next) => {
       if (!contacts) {
         return errorResponse(res, 404, 'Not Found', 'No contacts found');
       }
-
-      totalContacts = await ContactUs.countDocuments();
 
       // set the contacts in the cache
       contactCache.set('contacts', contacts);
