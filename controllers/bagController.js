@@ -1,15 +1,13 @@
 const { writeFile, unlink } = require('fs/promises');
 const { existsSync, mkdirSync } = require('fs');
 const { join } = require('path');
+
 const NodeCache = require('node-cache');
-const myCache = new NodeCache({ stdTTL: 60 * 60 });
+const multer = require('multer');
 
 // const memoryUsage = process.memoryUsage();
 // console.log('memoryUsage', memoryUsage);
-
 const { categories, subCategories } = require('../models/enums');
-
-const multer = require('multer');
 
 const Bag = require('../models/bagsModel');
 const {
@@ -17,6 +15,9 @@ const {
   successResponse,
   errorResponse,
 } = require('../utils/helpers');
+
+// Initialize the cache
+const bagCache = new NodeCache({ stdTTL: 60 * 60 });
 
 const multerStorage = multer.memoryStorage();
 
@@ -37,50 +38,59 @@ exports.uploadBagsImage = upload.array('thumbnail', 3);
 
 exports.getBags = async (req, res, next) => {
   // check all the keys in the cache
-  const mykeys = myCache.keys();
+  const mykeys = bagCache.keys();
 
   // console.log(mykeys);
   try {
-    const { q, search, page } = req.query;
+    const { q, search } = req.query;
 
-    // if (!q && !search && !page) {
-    //   return res.status(400).json({ message: 'Invalid query' });
-    // }
+    const page = Number(req.query.page) || 1;
+    const limit = Number(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+    const totalBags = await Bag.countDocuments();
+    const totalPages = Math.ceil(totalBags / limit);
+    const nextPage = page < totalPages ? Number(page) + 1 : null;
+    const prevPage = page > 1 ? page - 1 : null;
+    const currentPage = page;
 
     // check if the query is a category or subcategory
     // filter the bags
     if (categories.includes(q) || subCategories.includes(q)) {
       // check if the cache has the data
       const cacheKey = q;
-      const cacheValue = myCache.get(cacheKey);
+      const cacheValue = bagCache.get(cacheKey);
 
       if (cacheValue) {
-        return successResponse(
-          res,
-          200,
-          'success',
-          'Successfully get bags',
-          cacheValue
-        );
+        return successResponse(res, 200, 'success', 'Successfully get bags', {
+          totalBags,
+          totalPages,
+          nextPage,
+          currentPage,
+          prevPage,
+          perPage: limit,
+          bags: cacheValue,
+        });
       } else {
         const categorisedBags = await Bag.find({ category: q })
           .lean()
           .select('-updatedAt');
 
         // set the cache
-        myCache.set(cacheKey, categorisedBags, 3600);
+        bagCache.set(cacheKey, categorisedBags, 3600);
 
         if (!categorisedBags) {
           return errorResponse(res, 404, 'fail', 'No bags found');
         }
 
-        return successResponse(
-          res,
-          200,
-          'success',
-          'Successfully get bags',
-          categorisedBags
-        );
+        return successResponse(res, 200, 'success', 'Successfully get bags', {
+          totalBags,
+          totalPages,
+          nextPage,
+          currentPage,
+          prevPage,
+          perPage: limit,
+          bags: categorisedBags,
+        });
       }
     }
 
@@ -88,16 +98,18 @@ exports.getBags = async (req, res, next) => {
     if (search) {
       // check if the cache has the data
       const cacheKey = search;
-      const cacheValue = myCache.get(cacheKey);
+      const cacheValue = bagCache.get(cacheKey);
 
       if (cacheValue) {
-        return successResponse(
-          res,
-          200,
-          'success',
-          'Successfully get bags',
-          cacheValue
-        );
+        return successResponse(res, 200, 'success', 'Successfully get bags', {
+          totalBags,
+          totalPages,
+          nextPage,
+          currentPage,
+          prevPage,
+          perPage: limit,
+          bags: cacheValue,
+        });
       } else {
         const searchBags = await Bag.find({
           $or: [
@@ -107,104 +119,118 @@ exports.getBags = async (req, res, next) => {
           ],
         })
           .lean()
+          .sort({ createdAt: -1 })
+          .limit(limit)
+          .skip(skip)
           .select('-updatedAt');
 
         // set the cache
-        myCache.set(cacheKey, searchBags, 3600);
+        bagCache.set(cacheKey, searchBags, 3600);
 
         if (!searchBags) {
           return errorResponse(res, 404, 'fail', 'No bags found');
         }
 
-        return successResponse(
-          res,
-          200,
-          'success',
-          'Successfully get bags',
-          searchBags
-        );
+        return successResponse(res, 200, 'success', 'Successfully get bags', {
+          totalBags,
+          totalPages,
+          nextPage,
+          currentPage,
+          prevPage,
+          perPage: limit,
+          bags: searchBags,
+        });
       }
     }
 
     // pagination
-    if (page) {
-      if (page < 1) {
-        return res.status(400).json({ message: 'Invalid page number' });
-      }
+    // if (page) {
+    //   if (page < 1) {
+    //     return res.status(400).json({ message: 'Invalid page number' });
+    //   }
 
-      const cacheKey = `page-${page}`;
-      const cacheValue = myCache.get(cacheKey);
+    //   const cacheKey = `page-${page}`;
+    //   const cacheValue = bagCache.get(cacheKey);
 
-      const limit = 10;
-      const skip = (page - 1) * limit;
-      const totalBags = await Bag.countDocuments();
-      const totalPages = Math.ceil(totalBags / limit);
-      const nextPage = page < totalPages ? Number(page) + 1 : null;
-      const prevPage = page > 1 ? page - 1 : null;
-      const currentPage = Number(page);
+    //   const limit = 10;
+    //   const skip = (page - 1) * limit;
+    //   const totalBags = await Bag.countDocuments();
+    //   const totalPages = Math.ceil(totalBags / limit);
+    //   const nextPage = page < totalPages ? Number(page) + 1 : null;
+    //   const prevPage = page > 1 ? page - 1 : null;
+    //   const currentPage = Number(page);
 
-      if (cacheValue) {
-        return successResponse(res, 200, 'success', 'Successfully get bags', {
-          totalBags,
-          totalPages,
-          nextPage,
-          currentPage,
-          prevPage,
-          bags: cacheValue,
-        });
-      } else {
-        const bags = await Bag.find({})
-          .lean()
-          .select('-updatedAt')
-          .limit(limit)
-          .skip(skip);
+    //   if (cacheValue) {
+    //     return successResponse(res, 200, 'success', 'Successfully get bags', {
+    //       totalBags,
+    //       totalPages,
+    //       nextPage,
+    //       currentPage,
+    //       prevPage,
+    //       bags: cacheValue,
+    //     });
+    //   } else {
+    //     const bags = await Bag.find({})
+    //       .lean()
+    //       .select('-updatedAt')
+    //       .limit(limit)
+    //       .skip(skip);
 
-        if (!bags) {
-          return errorResponse(res, 404, 'fail', 'No bags found');
-        }
+    //     if (!bags) {
+    //       return errorResponse(res, 404, 'fail', 'No bags found');
+    //     }
 
-        // set the cache
-        myCache.set(cacheKey, bags, 3600);
+    //     // set the cache
+    //     bagCache.set(cacheKey, bags, 3600);
 
-        return successResponse(res, 200, 'success', 'Successfully get bags', {
-          totalBags,
-          totalPages,
-          nextPage,
-          currentPage,
-          prevPage,
-          bags,
-        });
-      }
-    }
+    //     return successResponse(res, 200, 'success', 'Successfully get bags', {
+    //       totalBags,
+    //       totalPages,
+    //       nextPage,
+    //       currentPage,
+    //       prevPage,
+    //       bags,
+    //     });
+    //   }
+    // }
 
     // check if the cache has the data
-    const cacheValue = myCache.get('allBags');
+    const cacheValue = bagCache.get('allBags');
 
     if (cacheValue) {
-      return successResponse(
-        res,
-        200,
-        'success',
-        'Successfully get bags',
-        cacheValue
-      );
+      return successResponse(res, 200, 'success', 'Successfully get bags', {
+        totalBags,
+        totalPages,
+        nextPage,
+        currentPage,
+        prevPage,
+        perPage: limit,
+        bags: cacheValue,
+      });
     } else {
-      const bags = await Bag.find({}).lean().select('-updatedAt');
-
-      // set the cache
-      myCache.set('allBags', bags, 3600);
+      const bags = await Bag.find({})
+        .lean()
+        .sort({ createdAt: -1 })
+        .limit(limit)
+        .skip(skip)
+        .select('-updatedAt');
 
       if (!bags) {
         return errorResponse(res, 404, 'fail', 'No bags found');
       }
 
-      return successResponse(
-        res,
-        200,
-        'success',
-        'Successfully get bags',
-        bags
-      );
+      // set the cache
+      bagCache.set('allBags', bags, 3600);
+
+      return successResponse(res, 200, 'success', 'Successfully get bags', {
+        totalBags,
+        totalPages,
+        nextPage,
+        currentPage,
+        prevPage,
+        perPage: limit,
+        bags,
+      });
     }
   } catch (error) {
     console.error(error.name);
@@ -223,16 +249,12 @@ exports.getBag = async (req, res, next) => {
     }
 
     const cacheKey = bagId;
-    const cachedValue = myCache.get(cacheKey);
+    const cachedValue = bagCache.get(cacheKey);
 
     if (cachedValue) {
-      return successResponse(
-        res,
-        200,
-        'success',
-        'Successfully get bag',
-        cachedValue
-      );
+      return successResponse(res, 200, 'success', 'Successfully get bag', {
+        bag: cachedValue,
+      });
     } else {
       const bag = await Bag.findById(bagId).lean().select('-updatedAt');
 
@@ -241,7 +263,7 @@ exports.getBag = async (req, res, next) => {
       }
 
       // set the cache
-      myCache.set(cacheKey, bag, 3600);
+      bagCache.set(cacheKey, bag, 3600);
 
       return successResponse(res, 200, 'success', 'Successfully get bag', bag);
     }
@@ -376,6 +398,14 @@ exports.createBag = async (req, res, next) => {
 
     // reset the id
     id = '';
+
+    // check if the cache has the data
+    const cacheKeys = bagCache.keys();
+
+    if (cacheKeys.length > 0) {
+      bagCache.flushAll();
+      bagCache.flushStats();
+    }
 
     return successResponse(
       res,
@@ -517,10 +547,10 @@ exports.updateBag = async (req, res, next) => {
 
     // check if the cache has the data
     const cacheKey = bagId;
-    const cacheValue = myCache.get(cacheKey);
+    const cacheValue = bagCache.get(cacheKey);
 
     if (cacheValue) {
-      myCache.del(cacheKey);
+      bagCache.del(cacheKey);
     }
 
     return successResponse(
@@ -582,10 +612,10 @@ exports.deleteBag = async (req, res, next) => {
 
     // check if the cache has the data
     const cacheKey = bagId;
-    const cacheValue = myCache.get(cacheKey);
+    const cacheValue = bagCache.get(cacheKey);
 
     if (cacheValue) {
-      myCache.del(cacheKey);
+      bagCache.del(cacheKey);
     }
 
     return successResponse(

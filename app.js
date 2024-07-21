@@ -35,6 +35,7 @@ if (process.env.NODE_ENV === 'dev ') {
 const bagRoutes = require('./routes/bagRoutes');
 const blogRoutes = require('./routes/blogRoutes');
 const orderRoutes = require('./routes/orderRoutes');
+const contactRoutes = require('./routes/contactRoutes');
 
 // Home Route
 app.get('/', (req, res) => {
@@ -45,6 +46,7 @@ app.get('/', (req, res) => {
 app.use('/api/v1/bag', bagRoutes);
 app.use('/api/v1/blog', blogRoutes);
 app.use('/api/v1/order', orderRoutes);
+app.use('/api/v1/contact', contactRoutes);
 
 // 404 Route
 app.all('*', (req, res) => {
