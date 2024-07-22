@@ -710,11 +710,25 @@ exports.deleteBag = async (req, res, next) => {
       });
     }
 
-    const deleteBag = await Bag.findByIdAndDelete(bagId)
-      .lean()
-      .select('-updatedAt');
+    // const deleteBag = await Bag.findByIdAndDelete(bagId)
+    //   .lean()
+    //   .select('-updatedAt');
 
-    if (!deleteBag) {
+    // const deleteCategory = await Category.findOneAndDelete({
+    //   _id: existingBag.category._id,
+    // });
+
+    // const deleteSubCategory = await SubCategory.findOneAndDelete({
+    //   _id: existingBag.subCategory._id,
+    // });
+
+    const [deleteBag, deleteCategory, deleteSubCategory] = await Promise.all([
+      Bag.findByIdAndDelete(bagId).lean().select('-updatedAt'),
+      Category.findOneAndDelete({ _id: existingBag.category._id }),
+      SubCategory.findOneAndDelete({ _id: existingBag.subCategory._id }),
+    ]);
+
+    if (!deleteBag || !deleteCategory || !deleteSubCategory) {
       return errorResponse(res, 404, 'fail', 'Bag not found for delete');
     }
 
@@ -877,9 +891,94 @@ exports.getSubCategories = async (req, res, next) => {
 
 // exports.createSubCategory = async (req, res, next) => { };
 
-exports.updateCategory = async (req, res, next) => {};
+exports.updateCategory = async (req, res, next) => {
+  try {
+    const { categoryName, bagId, subCategories } = req.body;
+    if (bagId <= 24) {
+      return errorResponse(res, 400, 'fail', 'Invalid bag ID');
+    }
 
-exports.updateSubCategory = async (req, res, next) => {};
+    if (!categoryName || !bagId || !subCategories) {
+      return errorResponse(res, 400, 'fail', 'Please provide all the details');
+    }
+
+    // console.log('sc', JSON.stringify(subCategories));
+
+    // throw new Error('Testing');
+
+    const existingBag = await Bag.findOne({ _id: bagId }).lean();
+    if (!existingBag) {
+      return errorResponse(res, 404, 'fail', 'Bag not found');
+    }
+
+    const updatedCategory = await Category.findOneAndUpdate(
+      { _id: existingBag.category },
+      { $set: { name: categoryName } },
+      { new: true }
+    ).lean();
+
+    const updatedSubCategory = await SubCategory.findOneAndUpdate(
+      {
+        _id: existingBag.subCategory,
+      },
+      {
+        name: JSON.parse(JSON.stringify(subCategories)),
+      },
+      { new: true }
+    ).lean();
+
+    // console.log('updatedCategory', updatedCategory);
+    // console.log('updatedSubCategory', updatedSubCategory);
+    if (!updatedCategory || !updatedSubCategory) {
+      return errorResponse(res, 404, 'fail', 'Category not found');
+    }
+
+    // update the bag with the category and subcategory
+    const updatedBag = await Bag.findOneAndUpdate(
+      { _id: bagId },
+      {
+        $set: { category: updatedCategory._id },
+        $set: { subCategory: updatedSubCategory._id },
+      },
+      { new: true }
+    );
+
+    if (!updatedBag) {
+      return errorResponse(res, 404, 'fail', 'Category not found');
+    }
+
+    return successResponse(
+      res,
+      200,
+      'success',
+      'Successfully updated category'
+      // updatedCategory._id
+    );
+  } catch (error) {
+    console.error(error.name);
+    console.error(error.message);
+    console.error(error.stack);
+
+    return errorResponse(res, 500, 'fail', error.message);
+  }
+};
+
+exports.updateSubCategory = async (req, res, next) => {
+  try {
+    return successResponse(
+      res,
+      200,
+      'success',
+      'Successfully updated sub-category'
+    );
+  } catch (error) {
+    console.error(error.name);
+    console.error(error.message);
+    console.error(error.stack);
+
+    return errorResponse(res, 500, 'fail', error.message);
+  }
+};
 
 async function deleteBags() {
   try {

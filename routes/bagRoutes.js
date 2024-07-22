@@ -24,4 +24,6 @@ router.route('/get-categories').get(bagController.getCategories);
 
 router.route('/get-sub-categories').get(bagController.getSubCategories);
 
+router.route('/update-category').patch(bagController.updateCategory);
+
 module.exports = router;
