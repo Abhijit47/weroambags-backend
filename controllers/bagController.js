@@ -58,47 +58,104 @@ exports.getBags = async (req, res, next) => {
 
     // check if the query is a category or subcategory
     // filter the bags
-    if (categories.includes(q) || subCategories.includes(q)) {
-      // check if the cache has the data
-      const cacheKey = q;
-      const cacheValue = bagCache.get(cacheKey);
+    if (q) {
+      const filteredCategory = await Category.find(
+        {
+          $or: [{ name: q }],
+        },
+        { bags: 1, subCategories: 1 },
+        { limit: limit, skip: skip }
+      )
+        .lean()
+        .select('-updatedAt')
+        .populate('bags', '-updatedAt -category -subCategory -createdAt')
+        .populate('category', 'name')
+        .populate('subCategories', 'name')
+        .exec();
 
-      if (cacheValue) {
-        return successResponse(res, 200, 'success', 'Successfully get bags', {
-          totalBags,
-          totalPages,
-          nextPage,
-          currentPage,
-          prevPage,
-          perPage: limit,
-          bags: cacheValue,
-        });
-      } else {
-        const categorisedBags = await Bag.find({ category: q })
-          .lean()
-          .select('-updatedAt')
-          .populate('category', 'name')
-          .populate('subCategory', 'name')
-          .exec();
+      // const filteredSubCategory = await SubCategory.find(
+      //   {
+      //     // name is an array
+      //     name: { $elemMatch: { $eq: q } },
+      //     // $or: [
+      //     //   {
+      //     //     name: {
+      //     //       $elemMatch: { $eq: q },
+      //     //     },
+      //     //   },
+      //     // ],
+      //   },
+      //   { bags: 1, category: 1 },
+      //   { limit: limit, skip: skip }
+      // )
+      //   .lean()
+      //   .select('-updatedAt')
+      //   // .populate('bags', '-updatedAt -category -subCategory -createdAt')
+      //   .populate('category', 'name')
+      //   .populate('subCategory', 'name')
+      //   .exec();
 
-        // set the cache
-        bagCache.set(cacheKey, categorisedBags, 3600);
+      // console.log('filteredSubCategory', filteredSubCategory);
 
-        if (!categorisedBags) {
-          return errorResponse(res, 404, 'fail', 'No bags found');
-        }
+      // const filteredBags = [...filteredCategory, ...filteredSubCategory];
+      const filteredBags = [...filteredCategory];
 
-        return successResponse(res, 200, 'success', 'Successfully get bags', {
-          totalBags,
-          totalPages,
-          nextPage,
-          currentPage,
-          prevPage,
-          perPage: limit,
-          bags: categorisedBags,
-        });
+      if (!filteredBags) {
+        return errorResponse(res, 404, 'fail', 'No bags found');
       }
+
+      return successResponse(res, 200, 'success', 'Successfully get bags', {
+        totalBags,
+        totalPages,
+        nextPage,
+        currentPage,
+        prevPage,
+        perPage: limit,
+        bags: filteredBags,
+      });
     }
+
+    // if (categories.includes(q) || subCategories.includes(q)) {
+    //   // check if the cache has the data
+    //   const cacheKey = q;
+    //   const cacheValue = bagCache.get(cacheKey);
+
+    //   if (cacheValue) {
+    //     return successResponse(res, 200, 'success', 'Successfully get bags', {
+    //       totalBags,
+    //       totalPages,
+    //       nextPage,
+    //       currentPage,
+    //       prevPage,
+    //       perPage: limit,
+    //       bags: cacheValue,
+    //     });
+    //   } else {
+    //     const categorisedBags = await Bag.find({ category: q })
+    //       .lean()
+    //       .select('-updatedAt')
+    //       .populate('category', 'name')
+    //       .populate('subCategory', 'name')
+    //       .exec();
+
+    //     // set the cache
+    //     bagCache.set(cacheKey, categorisedBags, 3600);
+
+    //     if (!categorisedBags) {
+    //       return errorResponse(res, 404, 'fail', 'No bags found');
+    //     }
+
+    //     return successResponse(res, 200, 'success', 'Successfully get bags', {
+    //       totalBags,
+    //       totalPages,
+    //       nextPage,
+    //       currentPage,
+    //       prevPage,
+    //       perPage: limit,
+    //       bags: categorisedBags,
+    //     });
+    //   }
+    // }
 
     // check if the search query is available
     if (search) {
