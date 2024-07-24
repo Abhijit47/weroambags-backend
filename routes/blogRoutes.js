@@ -13,12 +13,16 @@ router.get('/get-contents', blogController.getContents);
 router.post(
   '/create-blog',
   blogController.uploadBlogImage,
+  blogController.uploadToServer,
+  blogController.uploadToCloud,
   blogController.createBlog
 );
 
 router.patch(
   '/update-blog/:id',
   blogController.uploadBlogImage,
+  blogController.uploadToServer,
+  blogController.uploadToCloud,
   blogController.updateBlog
 );
 

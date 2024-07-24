@@ -1,4 +1,8 @@
+const { writeFile } = require('fs/promises');
+const { existsSync, mkdirSync } = require('fs');
+const { join } = require('path');
 const crypto = require('crypto');
+
 const { allowedKeys } = require('../models/enums');
 
 function filteredBody(reqBody) {
@@ -90,6 +94,63 @@ function purgeCache(cacheName) {
   }
 }
 
+function uploadMultipleImagesToServer(files, directoryName) {
+  try {
+    // Generate a random id
+    let id = randomId();
+
+    // Generate the file names
+    const fileNames = files.map(
+      (file) =>
+        file.originalname
+          .toLowerCase()
+          .replaceAll(' ', '-')
+          .replace(/\s/g, '-')
+          .split('.')[0] +
+        '-' +
+        id +
+        '.' +
+        file.originalname.split('.')[1]
+    );
+
+    // Each file is uploaded to the public folder in the server specified directory
+    files.forEach(async (file) => {
+      const fileName =
+        file.originalname
+          .toLowerCase()
+          .replaceAll(' ', '-')
+          .replace(/\s/g, '-')
+          .split('.')[0] +
+        '-' +
+        id +
+        '.' +
+        file.originalname.split('.')[1];
+
+      const folderName = join(__dirname, '..', 'public', directoryName);
+
+      // check if the folder exists
+      if (!existsSync(folderName)) {
+        mkdirSync(folderName);
+      }
+
+      // Store it in the public folder in the server
+      await writeFile(join(folderName, fileName), file.buffer);
+    });
+
+    // reset the id
+    id = '';
+
+    // return the file names
+    return fileNames;
+  } catch (error) {
+    console.error(error.name);
+    console.error(error.message);
+    console.error(error.stack);
+
+    return false;
+  }
+}
+
 module.exports = {
   filteredBody,
   checkBodyRequest,
@@ -101,4 +162,5 @@ module.exports = {
   successResponse,
   errorResponse,
   purgeCache,
+  uploadMultipleImagesToServer,
 };

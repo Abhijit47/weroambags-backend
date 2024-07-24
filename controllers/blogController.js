@@ -3,52 +3,28 @@ const { existsSync, mkdirSync } = require('fs');
 const { join } = require('path');
 
 const NodeCache = require('node-cache');
-const multer = require('multer');
 
 const Blog = require('../models/blogModel');
 const Contents = require('../models/contentsModel');
+
+const uploader = require('../configs/cloudinary');
+const upload = require('../configs/multerConfig');
 
 const {
   randomId,
   fileNameInKebabCase,
   successResponse,
   errorResponse,
+  purgeCache,
 } = require('../utils/helpers');
 
 // Initialize the cache
 const blogCache = new NodeCache({ stdTTL: 60 * 60 });
 
-const multerStorage = multer.memoryStorage();
-
-const multerFilter = (req, file, cb) => {
-  if (file.mimetype.startsWith('image')) {
-    cb(null, true);
-  } else {
-    cb(new Error('Not an image! Please upload only images.'), false);
-  }
-};
-
-const upload = multer({
-  storage: multerStorage,
-  fileFilter: multerFilter,
-});
-
 exports.uploadBlogImage = upload.single('cover');
 
-// CREATE BLOG
-exports.createBlog = async (req, res, next) => {
+exports.uploadToServer = async (req, res, next) => {
   try {
-    const { title, contents } = req.body;
-
-    // console.log(title, JSON.parse(contents));
-    // console.log(req.file);
-
-    if (!title || !contents) {
-      return res
-        .status(400)
-        .json({ message: 'Please provide all the details' });
-    }
-
     if (!req.file) {
       return res.status(400).json({ message: 'Please upload a blog cover' });
     }
@@ -59,18 +35,94 @@ exports.createBlog = async (req, res, next) => {
       mkdirSync(dir, { recursive: true });
     }
 
-    // let id = randomId();
     const fileName = fileNameInKebabCase(req.file.originalname);
 
     await writeFile(join(dir, fileName), req.file.buffer);
 
-    const serverUrl = `https://weroambags-backend.onrender.com`;
+    req.fileName = fileName;
 
-    const blogCover = `${serverUrl}/blogs/${fileName}`;
+    // call the next middleware
+    next();
+  } catch (error) {
+    console.error(error.name);
+    console.error(error.message);
+    console.error(error.stack);
+
+    return errorResponse(res, 500, 'error', error.message);
+  }
+};
+
+exports.uploadToCloud = async (req, res, next) => {
+  try {
+    // console.log('upload to cloud');
+    // console.log(req.fileName);
+
+    // Cloudinary folder name
+    const cloudinaryFolder = 'blogs';
+
+    const folderName = join(__dirname, '..', 'public', 'blogs');
+
+    //Get the file path
+    const filePath = join(folderName, req.fileName);
+
+    // console.log(filePath);
+
+    //Upload the file to cloudinary
+    const result = await uploader.upload(filePath, {
+      folder: cloudinaryFolder,
+      use_filename: true,
+      unique_filename: false,
+      overwrite: true,
+      invalidate: true,
+    });
+
+    // console.log('result', result);
+
+    // Delete the file from the server
+    unlink(filePath, function (err) {
+      if (err) {
+        console.error(err);
+      }
+      console.log('Blog cover deleted from the server');
+    });
+
+    // Set the cloudinary url to the req object
+    req.cloudinaryResponse = result;
+
+    // call the next middleware
+    next();
+  } catch (error) {
+    console.error(error.name);
+    console.error(error.message);
+    console.error(error.stack);
+
+    return errorResponse(res, 500, 'error', error.message);
+  }
+};
+
+// CREATE BLOG
+exports.createBlog = async (req, res, next) => {
+  try {
+    const { title, contents } = req.body;
+    // console.log(title, JSON.parse(contents));
+    // console.log(req.file);
+
+    if (!title || !contents) {
+      return res
+        .status(400)
+        .json({ message: 'Please provide all the details' });
+    }
+
+    if (!req.cloudinaryResponse) {
+      return res.status(400).json({ message: 'Please upload a blog cover' });
+    }
 
     const newblog = await Blog.create({
       title,
-      cover: blogCover,
+      cover: req.cloudinaryResponse.secure_url,
+      assetId: req.cloudinaryResponse.asset_id,
+      publicId: req.cloudinaryResponse.public_id,
+      secretUrl: req.cloudinaryResponse.secure_url,
     });
 
     const newContents = await Contents.insertMany(
@@ -96,21 +148,13 @@ exports.createBlog = async (req, res, next) => {
     );
     // console.log('update', updateBlogWithContents);
 
-    // Reset the id
-    // id = '';
-
     // Clear the cache if it exists
-    const cacheKey = blogCache.keys();
-    if (cacheKey) {
-      blogCache.flushAll();
-      blogCache.flushStats();
-      // blogCache.del('blogs');
-    }
+    purgeCache(blogCache);
 
     return res.status(201).json({
       status: 'success',
       message: 'Successfully created blog post.',
-      data: updateBlogWithContents,
+      data: updateBlogWithContents._id,
     });
   } catch (error) {
     console.error(error.name);
@@ -168,14 +212,14 @@ exports.getBlogs = async (req, res, next) => {
         })
           .sort({ createdAt: -1 })
           .lean()
-          .select('-updatedAt')
+          .select('-updatedAt -assetId -publicId -secretUrl')
           .skip(skip)
           .limit(limit)
           .populate('contents', 'title description')
           .exec();
 
-        if (!blogs) {
-          return errorResponse(res, 404, 'success', 'No blogs found');
+        if (blogs.length <= 0) {
+          return errorResponse(res, 404, 'fail', 'No blogs found');
         }
 
         totalBlogs = await Blog.countDocuments({
@@ -223,7 +267,8 @@ exports.getBlogs = async (req, res, next) => {
     } else {
       const blogs = await Blog.find()
         .lean()
-        .select('-updatedAt')
+        .sort({ createdAt: -1 })
+        .select('-updatedAt -assetId -publicId -secretUrl')
         .skip(skip)
         .limit(limit)
         .populate('contents', 'title description')
@@ -289,7 +334,7 @@ exports.getBlog = async (req, res, next) => {
     } else {
       const blog = await Blog.findById({ _id: id })
         .lean()
-        .select('-updatedAt')
+        .select('-updatedAt -assetId -publicId -secretUrl')
         .populate('contents', 'title description')
         .exec();
 
@@ -322,10 +367,6 @@ exports.updateBlog = async (req, res, next) => {
   try {
     const { id } = req.params;
     const { title } = req.body;
-    // const { cover } = req.file;
-
-    const serverUrl = `https://weroambags-backend.onrender.com`;
-    let fileName = undefined;
 
     // If there no id or is less than 24 characters
     if (!id || id <= 24) {
@@ -343,26 +384,30 @@ exports.updateBlog = async (req, res, next) => {
       return errorResponse(res, 404, 'fail', 'No Blog found for update.');
     }
 
-    // if there is a new cover image
-    if (req.file) {
-      // delete the existing blog cover
-      const existingCover = existingBlog.cover.split('/').pop();
-      const filePath = join(__dirname, '..', 'public', 'blogs', existingCover);
+    // delete the existing blog cover
+    const existingCover = existingBlog.publicId;
 
-      // find the existing blog cover
-      if (existsSync(filePath)) {
-        await unlink(filePath);
+    uploader.destroy(existingCover, function (error, result) {
+      if (error) {
+        console.error(error);
       }
+      console.log('DELETE', result);
+      console.log(`Deleted the existing blog cover from cloudinary`);
+    });
 
-      const dir = join(__dirname, '..', 'public', 'blogs');
-      fileName = fileNameInKebabCase(req.file.originalname);
-
-      await writeFile(join(dir, fileName), req.file.buffer);
+    // if there is a new cover image
+    if (!req.cloudinaryResponse) {
+      return res
+        .status(400)
+        .json({ message: 'Please upload a new blog cover' });
     }
 
     const updateObj = {
       title: title || existingBlog.title,
-      cover: fileName ? `${serverUrl}/blogs/${fileName}` : existingBlog.cover,
+      cover: req.cloudinaryResponse.secure_url,
+      assetId: req.cloudinaryResponse.asset_id,
+      publicId: req.cloudinaryResponse.public_id,
+      secretUrl: req.cloudinaryResponse.secure_url,
     };
 
     const updatedBlog = await Blog.findOneAndUpdate(
@@ -382,16 +427,8 @@ exports.updateBlog = async (req, res, next) => {
       return errorResponse(res, 404, 'fail', 'Something went wrong');
     }
 
-    // Reset the fileName
-    fileName = undefined;
-
     // check if the cache has the data
-    const cacheKey = `blog-${id}`;
-    const cacheValue = blogCache.get(cacheKey);
-
-    if (cacheValue) {
-      blogCache.del(cacheKey);
-    }
+    purgeCache(blogCache);
 
     return successResponse(
       res,
@@ -424,13 +461,15 @@ exports.deleteBlog = async (req, res, next) => {
       return errorResponse(res, 404, 'error', 'Blog not found for delete.');
     }
 
-    // delete the blog cover
-    const cover = blog.cover.split('/').pop();
-    const dir = join(__dirname, '..', 'public', 'blogs', cover);
-
-    if (existsSync(dir)) {
-      await unlink(dir);
-    }
+    // delete the blog cover from cloudinary
+    uploader.destroy(blog.publicId, function (error, result) {
+      if (error) {
+        console.error(error);
+      }
+      console.log('DELETE', result);
+      console.log(`Deleted the blog cover from cloudinary
+      `);
+    });
 
     const deletedBlog = await Blog.findByIdAndDelete(
       { _id: id },
@@ -448,18 +487,14 @@ exports.deleteBlog = async (req, res, next) => {
     }
 
     // check if the cache has the data
-    const cacheKey = `blog-${id}`;
-    const cacheValue = blogCache.get(cacheKey);
-
-    if (cacheValue) {
-      blogCache.del(cacheKey);
-    }
+    purgeCache(blogCache);
 
     return successResponse(
       res,
       200,
       'success',
-      'Successfully deleted the blog post and its contents'
+      'Successfully deleted the blog post and its contents',
+      deletedBlog._id
     );
   } catch (error) {
     console.error(error.name);

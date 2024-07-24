@@ -1099,7 +1099,7 @@ exports.getSubCategories = async (req, res, next) => {
 exports.updateCategory = async (req, res, next) => {
   try {
     const { categoryName, bagId, subCategories } = req.body;
-    if (bagId <= 24) {
+    if (bagId.length <= 24) {
       return errorResponse(res, 400, 'fail', 'Invalid bag ID');
     }
 
