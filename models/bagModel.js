@@ -109,6 +109,48 @@ const bagSchema = new mongoose.Schema(
       trim: true,
       lowercase: true,
     },
+    assetId1: {
+      type: String,
+      required: [true, 'Please provide an assetId1'],
+    },
+    assetId2: {
+      type: String,
+      // required: [true, 'Please provide an assetId2'],
+      default: '',
+    },
+    assetId3: {
+      type: String,
+      // required: [true, 'Please provide an assetId3'],
+      default: '',
+    },
+    publicId1: {
+      type: String,
+      required: [true, 'Please provide a publicId1'],
+    },
+    publicId2: {
+      type: String,
+      // required: [true, 'Please provide a publicId2'],
+      default: '',
+    },
+    publicId3: {
+      type: String,
+      // required: [true, 'Please provide a publicId3'],
+      default: '',
+    },
+    secureUrl1: {
+      type: String,
+      required: [true, 'Please provide a secureUrl1'],
+    },
+    secureUrl2: {
+      type: String,
+      // required: [true, 'Please provide a secureUrl2'],
+      default: '',
+    },
+    secureUrl3: {
+      type: String,
+      // required: [true, 'Please provide a secureUrl3'],
+      default: '',
+    },
   },
   {
     timestamps: true,

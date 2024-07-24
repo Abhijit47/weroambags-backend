@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-const app = require('./app');
+const { app } = require('./app');
 
 const MONGO_URI = process.env.DATABASE_URI;
 const MONGO_PASSWORD = process.env.DATABASE_PASSWORD;

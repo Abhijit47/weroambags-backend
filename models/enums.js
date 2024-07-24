@@ -8,4 +8,19 @@ const categories = [
 
 const subCategories = ['daypack', 'office bags', 'school bags'];
 
-module.exports = { categories, subCategories };
+const allowedKeys = [
+  'title',
+  'oldPrice',
+  'rating',
+  'newPrice',
+  'available',
+  'sold',
+  'category',
+  'subCategory',
+  'quantity',
+  'reviewsCount',
+  'description',
+  'specifications',
+];
+
+module.exports = { categories, subCategories, allowedKeys };

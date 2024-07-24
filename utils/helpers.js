@@ -1,4 +1,26 @@
 const crypto = require('crypto');
+const { allowedKeys } = require('../models/enums');
+
+function filteredBody(reqBody) {
+  // filter the body
+  // check if the keys in the body are allowed
+  const bool = Object.keys(reqBody).every((key) => allowedKeys.includes(key));
+  if (!bool) {
+    return false;
+  }
+  return true;
+}
+
+function checkBodyRequest(reqBody) {
+  const keys = Object.keys(reqBody);
+
+  const missingKeys = allowedKeys.filter((key) => !keys.includes(key));
+
+  if (missingKeys.length <= 0) {
+    return true;
+  }
+  return false;
+}
 
 function randomId() {
   return Date.now().toString(36) + Math.random().toString(36).substr(2);
@@ -60,7 +82,17 @@ function errorResponse(res, statusCode, status, message, error) {
   return res.status(statusCode).json({ status, message, error });
 }
 
+function purgeCache(cacheName) {
+  const keys = cacheName.keys();
+  if (keys.length > 0) {
+    cacheName.flushAll();
+    cacheName.flushStats();
+  }
+}
+
 module.exports = {
+  filteredBody,
+  checkBodyRequest,
   randomId,
   fileNameInKebabCase,
   isStringifiedJSON,
@@ -68,4 +100,5 @@ module.exports = {
   generateSignature,
   successResponse,
   errorResponse,
+  purgeCache,
 };

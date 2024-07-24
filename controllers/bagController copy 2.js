@@ -1,260 +1,43 @@
 const { writeFile, unlink } = require('fs/promises');
-const { existsSync, mkdirSync, readFileSync } = require('fs');
+const { existsSync, mkdirSync } = require('fs');
 const { join } = require('path');
 
 const NodeCache = require('node-cache');
+const multer = require('multer');
+
 // const memoryUsage = process.memoryUsage();
 // console.log('memoryUsage', memoryUsage);
-// const { categories, subCategories, allowedKeys } = require('../models/enums');
+const { categories, subCategories } = require('../models/enums');
 
 const Bag = require('../models/bagModel');
 const Category = require('../models/categoryModel');
 const SubCategory = require('../models/subCategoryModel');
-const uploader = require('../configs/cloudinary');
-const upload = require('../configs/multerConfig');
 
 const {
   randomId,
   successResponse,
   errorResponse,
-  filteredBody,
-  checkBodyRequest,
-  purgeCache,
 } = require('../utils/helpers');
 
 // Initialize the cache
 const bagCache = new NodeCache({ stdTTL: 60 * 60 });
 
+const multerStorage = multer.memoryStorage();
+
+const multerFilter = (req, file, cb) => {
+  if (file.mimetype.startsWith('image')) {
+    cb(null, true);
+  } else {
+    cb(new Error('Not an image! Please upload only images.'), false);
+  }
+};
+
+const upload = multer({
+  storage: multerStorage,
+  fileFilter: multerFilter,
+});
+
 exports.uploadBagsImage = upload.array('thumbnail', 3);
-
-function uploadMultipleImagesToServer(files, directoryName) {
-  // Generate a random id
-  let id = randomId();
-
-  // Generate the file names
-  const fileNames = files.map(
-    (file) =>
-      file.originalname
-        .toLowerCase()
-        .replaceAll(' ', '-')
-        .replace(/\s/g, '-')
-        .split('.')[0] +
-      '-' +
-      id +
-      '.' +
-      file.originalname.split('.')[1]
-  );
-
-  // Each file is uploaded to the public folder in the server specified directory
-  files.forEach(async (file) => {
-    const fileName =
-      file.originalname
-        .toLowerCase()
-        .replaceAll(' ', '-')
-        .replace(/\s/g, '-')
-        .split('.')[0] +
-      '-' +
-      id +
-      '.' +
-      file.originalname.split('.')[1];
-
-    const folderName = join(__dirname, '..', 'public', directoryName);
-
-    // check if the folder exists
-    if (!existsSync(folderName)) {
-      mkdirSync(folderName);
-    }
-
-    // Store it in the public folder in the server
-    await writeFile(join(folderName, fileName), file.buffer);
-  });
-
-  // reset the id
-  id = '';
-
-  // return the file names
-  return fileNames;
-}
-
-exports.uploadToServer = async (req, res, next) => {
-  try {
-    if (req.files.length <= 0) {
-      return errorResponse(res, 400, 'fail', 'Please upload thumbnails');
-    }
-
-    // console.log(req.files[0]);
-
-    // const files = uploadMultipleImagesToServer(req.files, 'bags');
-
-    // Generate a random id
-    let id = randomId();
-
-    // Generate the file names
-    const fileNames = req.files.map(
-      (file) =>
-        file.originalname
-          .toLowerCase()
-          .replaceAll(' ', '-')
-          .replace(/\s/g, '-')
-          .split('.')[0] +
-        '-' +
-        id +
-        '.' +
-        file.originalname.split('.')[1]
-    );
-
-    // Each file is uploaded to the public folder in the server specified directory
-    req.files.forEach(async (file) => {
-      const fileName =
-        file.originalname
-          .toLowerCase()
-          .replaceAll(' ', '-')
-          .replace(/\s/g, '-')
-          .split('.')[0] +
-        '-' +
-        id +
-        '.' +
-        file.originalname.split('.')[1];
-
-      const folderName = join(__dirname, '..', 'public', 'bags');
-
-      // check if the folder exists
-      if (!existsSync(folderName)) {
-        mkdirSync(folderName);
-      }
-
-      await writeFile(join(folderName, fileName), file.buffer);
-    });
-
-    // reset the id
-    id = '';
-
-    // set the files in the request object
-    req.filesNames = fileNames;
-
-    next();
-  } catch (error) {
-    console.error(error.name);
-    console.error(error.message);
-    console.error(error.stack);
-
-    return errorResponse(res, 500, 'fail', error.message);
-  }
-};
-
-exports.uploadToCloud = async (req, res, next) => {
-  try {
-    // console.log('filePaths', req.filesNames);
-
-    // Cloudinary folder name
-    const cloudinaryFolder = 'bags';
-
-    let filePath2 = undefined;
-    let filePath3 = undefined;
-    let file2 = undefined;
-    let file3 = undefined;
-
-    const folderName = join(__dirname, '..', 'public', 'bags');
-
-    // get the file paths 1
-    const filePath1 = join(folderName, req.filesNames[0]);
-    // get the file paths 2
-    if (req.filesNames.length > 1) {
-      filePath2 = join(folderName, req.filesNames[1]);
-    }
-    // get the file paths 3
-    if (req.filesNames.length > 2) {
-      filePath3 = join(folderName, req.filesNames[2]);
-    }
-
-    // console.log('filePaths1', filePath1);
-    // console.log('filePaths2', filePath2); // undefined
-    // console.log('filePaths3', filePath3); // undefined
-
-    // Upload the images to cloudinary
-    const file1 = await uploader.upload(filePath1, {
-      // upload_preset: 'images',
-      folder: cloudinaryFolder,
-      use_filename: true,
-      unique_filename: false,
-      overwrite: true,
-      invalidate: true,
-      // async: true,
-    });
-
-    unlink(filePath1, (err) => {
-      if (err) {
-        console.error(err);
-      } else {
-        console.log('file1 deleted'); // logged on server console
-      }
-    });
-
-    if (filePath2) {
-      file2 = await uploader.upload(filePath2, {
-        // upload_preset: 'images',
-        folder: cloudinaryFolder,
-        use_filename: true,
-        unique_filename: false,
-        overwrite: true,
-        invalidate: true,
-        // async: true,
-      });
-
-      unlink(filePath2, (err) => {
-        if (err) {
-          console.error(err);
-        } else {
-          console.log('file2 deleted'); // logged on server console
-        }
-      });
-    }
-
-    if (filePath3) {
-      file3 = await uploader.upload(filePath3, {
-        // upload_preset: 'images',
-        folder: cloudinaryFolder,
-        use_filename: true,
-        unique_filename: false,
-        overwrite: true,
-        invalidate: true,
-        // async: true,
-      });
-
-      unlink(filePath3, (err) => {
-        if (err) {
-          console.error(err);
-        } else {
-          console.log('file3 deleted'); // logged on server console
-        }
-      });
-    }
-
-    // console.log('file1', file1);
-    // console.log('file2', file2);
-    // console.log('file3', file3);
-
-    const cloudinaryResponses = [file1, file2, file3];
-
-    // set the secure url in the request object
-    req.cloudinaryResponses = cloudinaryResponses;
-
-    // reset the inner variables
-    filePath2 = undefined;
-    filePath3 = undefined;
-    file2 = undefined;
-    file3 = undefined;
-
-    // return to the next middleware
-    next();
-  } catch (error) {
-    console.error(error.name);
-    console.error(error.message);
-    console.error(error.stack);
-
-    return errorResponse(res, 500, 'fail', error.message);
-  }
-};
 
 exports.getBags = async (req, res, next) => {
   // check all the keys in the cache
@@ -276,21 +59,48 @@ exports.getBags = async (req, res, next) => {
     // check if the query is a category or subcategory
     // filter the bags
     if (q) {
-      const filteredCategory = await Category.find({
-        name: { $regex: q, $options: 'i' },
-      })
+      const filteredCategory = await Category.find(
+        {
+          $or: [{ name: q }],
+        },
+        { bags: 1, subCategories: 1 },
+        { limit: limit, skip: skip }
+      )
         .lean()
-        .select('-updatedAt -createdAt')
-        .populate(
-          'bags',
-          '-updatedAt -assetId1 -assetId2 -assetId3 -publicId1 -publicId2 -publicId3 -secureUrl1 -secureUrl2 -secureUrl3 -category -subCategory -createdAt'
-        )
+        .select('-updatedAt')
+        .populate('bags', '-updatedAt -category -subCategory -createdAt')
+        .populate('category', 'name')
         .populate('subCategories', 'name')
         .exec();
 
+      // const filteredSubCategory = await SubCategory.find(
+      //   {
+      //     // name is an array
+      //     name: { $elemMatch: { $eq: q } },
+      //     // $or: [
+      //     //   {
+      //     //     name: {
+      //     //       $elemMatch: { $eq: q },
+      //     //     },
+      //     //   },
+      //     // ],
+      //   },
+      //   { bags: 1, category: 1 },
+      //   { limit: limit, skip: skip }
+      // )
+      //   .lean()
+      //   .select('-updatedAt')
+      //   // .populate('bags', '-updatedAt -category -subCategory -createdAt')
+      //   .populate('category', 'name')
+      //   .populate('subCategory', 'name')
+      //   .exec();
+
+      // console.log('filteredSubCategory', filteredSubCategory);
+
+      // const filteredBags = [...filteredCategory, ...filteredSubCategory];
       const filteredBags = [...filteredCategory];
 
-      if (filteredBags.length <= 0) {
+      if (!filteredBags) {
         return errorResponse(res, 404, 'fail', 'No bags found');
       }
 
@@ -304,6 +114,48 @@ exports.getBags = async (req, res, next) => {
         bags: filteredBags,
       });
     }
+
+    // if (categories.includes(q) || subCategories.includes(q)) {
+    //   // check if the cache has the data
+    //   const cacheKey = q;
+    //   const cacheValue = bagCache.get(cacheKey);
+
+    //   if (cacheValue) {
+    //     return successResponse(res, 200, 'success', 'Successfully get bags', {
+    //       totalBags,
+    //       totalPages,
+    //       nextPage,
+    //       currentPage,
+    //       prevPage,
+    //       perPage: limit,
+    //       bags: cacheValue,
+    //     });
+    //   } else {
+    //     const categorisedBags = await Bag.find({ category: q })
+    //       .lean()
+    //       .select('-updatedAt')
+    //       .populate('category', 'name')
+    //       .populate('subCategory', 'name')
+    //       .exec();
+
+    //     // set the cache
+    //     bagCache.set(cacheKey, categorisedBags, 3600);
+
+    //     if (!categorisedBags) {
+    //       return errorResponse(res, 404, 'fail', 'No bags found');
+    //     }
+
+    //     return successResponse(res, 200, 'success', 'Successfully get bags', {
+    //       totalBags,
+    //       totalPages,
+    //       nextPage,
+    //       currentPage,
+    //       prevPage,
+    //       perPage: limit,
+    //       bags: categorisedBags,
+    //     });
+    //   }
+    // }
 
     // check if the search query is available
     if (search) {
@@ -325,17 +177,15 @@ exports.getBags = async (req, res, next) => {
         const searchBags = await Bag.find({
           $or: [
             { title: { $regex: search, $options: 'i' } },
-            // { category: { $regex: search, $options: 'i' } },
-            // { subCategory: { $regex: search, $options: 'i' } },
+            { category: { $regex: search, $options: 'i' } },
+            { subCategory: { $regex: search, $options: 'i' } },
           ],
         })
           .lean()
           .sort({ createdAt: -1 })
           .limit(limit)
           .skip(skip)
-          .select(
-            '-updatedAt -assetId1 -assetId2 -assetId3 -publicId1 -publicId2 -publicId3 -secureUrl1 -secureUrl2 -secureUrl3'
-          )
+          .select('-updatedAt')
           .populate('category', 'name')
           .populate('subCategory', 'name')
           .exec();
@@ -343,7 +193,7 @@ exports.getBags = async (req, res, next) => {
         // set the cache
         bagCache.set(cacheKey, searchBags, 3600);
 
-        if (searchBags.length <= 0) {
+        if (!searchBags) {
           return errorResponse(res, 404, 'fail', 'No bags found');
         }
 
@@ -378,9 +228,7 @@ exports.getBags = async (req, res, next) => {
         .sort({ createdAt: -1 })
         .limit(limit)
         .skip(skip)
-        .select(
-          '-updatedAt -assetId1 -assetId2 -assetId3 -publicId1 -publicId2 -publicId3 -secureUrl1 -secureUrl2 -secureUrl3'
-        )
+        .select('-updatedAt')
         .populate('category', 'name')
         .populate('subCategory', 'name')
         .exec();
@@ -428,9 +276,7 @@ exports.getBag = async (req, res, next) => {
     } else {
       const bag = await Bag.findById(bagId)
         .lean()
-        .select(
-          '-updatedAt -assetId1 -assetId2 -assetId3 -publicId1 -publicId2 -publicId3 -secureUrl1 -secureUrl2 -secureUrl3'
-        )
+        .select('-updatedAt')
         .populate('category', 'name')
         .populate('subCategory', 'name')
         .exec();
@@ -473,90 +319,131 @@ exports.getAccessBagsImages = async (req, res, next) => {
 
 exports.createBag = async (req, res, next) => {
   try {
-    // check if the body is empty or not
-    if (!filteredBody(req.body)) {
-      return errorResponse(res, 400, 'fail', 'Please provide correct details');
+    const {
+      title,
+      oldPrice,
+      rating,
+      newPrice,
+      available,
+      sold,
+      category,
+      subCategory,
+      quantity,
+      reviewsCount,
+      description,
+      specifications,
+    } = req.body;
+
+    // console.log('reqBody', req.body);
+
+    if (
+      !title ||
+      !oldPrice ||
+      !rating ||
+      !newPrice ||
+      !available ||
+      !sold ||
+      !category ||
+      !subCategory ||
+      !quantity ||
+      !reviewsCount ||
+      !description ||
+      !specifications
+    ) {
+      return errorResponse(res, 400, 'fail', 'Please provide all the details');
     }
 
-    // allowed keys are available in the body request or not
-    // check if any allowed keys are missing
-    if (!checkBodyRequest(req.body)) {
-      return errorResponse(
-        res,
-        400,
-        'fail',
-        'Please provide all required fields'
-      );
+    if (req.files.length <= 0) {
+      return errorResponse(res, 400, 'fail', 'Please upload thumbnails');
     }
 
-    let images = [];
+    let id = randomId();
 
-    // console.log('clouddinaryRes', req.cloudinaryResponses);
+    const files = req.files.map(
+      (file) =>
+        file.originalname
+          .toLowerCase()
+          .replaceAll(' ', '-')
+          .replace(/\s/g, '-')
+          .split('.')[0] +
+        '-' +
+        id +
+        '.' +
+        file.originalname.split('.')[1]
+    );
 
-    // const images = [req.secureUrl1, req.secureUrl2, req.secureUrl3];
+    // console.log('files', files);
 
-    images.push(req.cloudinaryResponses[0].secure_url);
+    req.files.forEach(async (file) => {
+      const fileName =
+        file.originalname
+          .toLowerCase()
+          .replaceAll(' ', '-')
+          .replace(/\s/g, '-')
+          .split('.')[0] +
+        '-' +
+        id +
+        '.' +
+        file.originalname.split('.')[1];
 
-    if (req.cloudinaryResponses[1]) {
-      images.push(req.cloudinaryResponses[1].secure_url);
-    }
+      const folderName = join(__dirname, '..', 'public', 'bags');
 
-    if (req.cloudinaryResponses[2]) {
-      images.push(req.cloudinaryResponses[2].secure_url);
-    }
+      // check if the folder exists
+      if (!existsSync(folderName)) {
+        mkdirSync(folderName);
+      }
+
+      await writeFile(join(folderName, fileName), file.buffer);
+    });
+
+    const url = `https://weroambags-backend.onrender.com`;
+    // access the images
+    const images = files.map((file) => `${url}/bags/${file}`);
+
+    // console.log('images', images);
 
     const obj = {
-      title: req.body.title,
-      oldPrice: req.body.oldPrice,
-      rating: req.body.rating,
-      newPrice: req.body.newPrice,
-      available: req.body.available,
-      sold: req.body.sold,
-      thumbnail: [...images],
+      title,
+      oldPrice,
+      rating,
+      newPrice,
+      available,
+      sold,
+      thumbnail: images,
       // category,
       // subCategory,
-      quantity: req.body.quantity,
-      reviewsCount: req.body.reviewsCount,
-      description: req.body.description,
-      specifications: req.body.specifications,
-      assetId1: req.cloudinaryResponses[0].asset_id,
-      publicId1: req.cloudinaryResponses[0].public_id,
-      secureUrl1: req.cloudinaryResponses[0].secure_url,
-      assetId2: req.cloudinaryResponses[1]
-        ? req.cloudinaryResponses[1].asset_id
-        : '',
-      publicId2: req.cloudinaryResponses[1]
-        ? req.cloudinaryResponses[1].public_id
-        : '',
-      secureUrl2: req.cloudinaryResponses[1]
-        ? req.cloudinaryResponses[1].secure_url
-        : '',
-      assetId3: req.cloudinaryResponses[2]
-        ? req.cloudinaryResponses[2].asset_id
-        : '',
-      publicId3: req.cloudinaryResponses[2]
-        ? req.cloudinaryResponses[2].public_id
-        : '',
-      secureUrl3: req.cloudinaryResponses[2]
-        ? req.cloudinaryResponses[2].secure_url
-        : '',
+      quantity,
+      reviewsCount,
+      description,
+      specifications,
     };
-
-    // console.log('reqobj', obj);
 
     const [newBag, newCategory, newSubCategory] = await Promise.all([
       Bag.create(obj),
       Category.create({
-        name: req.body.category,
+        name: category,
       }),
       SubCategory.create({
-        name: JSON.parse(req.body.subCategory),
+        name: JSON.parse(subCategory),
       }),
     ]);
 
     if (!newBag || !newCategory || !newSubCategory) {
       return errorResponse(res, 400, 'fail', 'Bag not created');
     }
+
+    // create a bag
+    // const newBag = await Bag.create(obj);
+
+    // create a category
+    // const newCategory = await Category.create({
+    //   name: category,
+    // });
+
+    // create a subcategory
+    // const newSubCategory = await SubCategory.create({
+    //   name: subCategory,
+    // });
 
     // update the bag with the category and subcategory
     if (newBag && newCategory && newSubCategory) {
@@ -589,17 +476,16 @@ exports.createBag = async (req, res, next) => {
         ),
       ]);
 
+      // reset the id
+      id = '';
+
       // check if the cache has the data
-      purgeCache(bagCache);
+      const cacheKeys = bagCache.keys();
 
-      // const cacheKeys = bagCache.keys();
-      // if (cacheKeys.length > 0) {
-      //   bagCache.flushAll();
-      //   bagCache.flushStats();
-      // }
-
-      //reset the images
-      images = [];
+      if (cacheKeys.length > 0) {
+        bagCache.flushAll();
+        bagCache.flushStats();
+      }
 
       return successResponse(
         res,
@@ -609,8 +495,6 @@ exports.createBag = async (req, res, next) => {
         updatedBag
       );
     }
-
-    // return successResponse(res, 201, 'success', 'Bag added to your collection');
   } catch (error) {
     console.error(error.name);
     console.error(error.message);
@@ -623,164 +507,100 @@ exports.createBag = async (req, res, next) => {
 exports.updateBag = async (req, res, next) => {
   try {
     const bagId = req.params.id;
+
     if (!bagId || bagId.length < 24) {
       return errorResponse(res, 400, 'fail', 'Invalid bag ID');
     }
 
-    // check if the body is empty or not
-    if (!filteredBody(req.body)) {
-      return errorResponse(res, 400, 'fail', 'Please provide correct details');
-    }
+    const {
+      title,
+      oldPrice,
+      rating,
+      newPrice,
+      available,
+      sold,
+      category,
+      subCategory,
+      quantity,
+      reviewsCount,
+      description,
+      specifications,
+    } = req.body;
 
     const existingBag = await Bag.findById({ _id: bagId }).lean();
     if (!existingBag) {
       return errorResponse(res, 404, 'fail', 'Bag not found for update');
     }
 
-    // delete the old images from cloudinary
-    // sometime in the future publicId2 or publicId3 will be "" so we need to check for that
-    let images = [];
-    let filePath2 = undefined;
-    let filePath3 = undefined;
-    let file1 = undefined;
-    let file2 = undefined;
-    let file3 = undefined;
+    let newImages = undefined;
 
-    // console.log('req.files', req.files.length);
-    if (req.files.length > 0) {
-      const folderName = join(__dirname, '..', 'public', 'bags');
+    if (!req.files.length <= 0) {
+      let id = randomId();
+      const files = req.files.map(
+        (file) =>
+          file.originalname
+            .toLowerCase()
+            .replaceAll(' ', '-')
+            .replace(/\s/g, '-')
+            .split('.')[0] +
+          '-' +
+          id +
+          '.' +
+          file.originalname.split('.')[1]
+      );
 
-      const fileNames = uploadMultipleImagesToServer(req.files, 'bags');
-      // console.log('fileNames', fileNames); //['file1', 'file2', 'file3']
+      const existingThumbnails = existingBag.thumbnail;
 
-      // get the file paths 1
-      const filePath1 = join(folderName, fileNames[0]);
-      // get the file paths 2
-      if (fileNames.length > 1) {
-        filePath2 = join(folderName, fileNames[1]);
-      }
-      // get the file paths 3
-      if (fileNames.length > 2) {
-        filePath3 = join(folderName, fileNames[2]);
-      }
+      // Remove the old images
+      existingThumbnails.forEach(async (image) => {
+        const imageName = image.split('/').pop();
+        const folderName = join(process.cwd(), 'public', 'bags');
 
-      // get the public ids
-      const publicIds = [
-        existingBag.publicId1,
-        existingBag.publicId2,
-        existingBag.publicId3,
-      ];
+        await unlink(join(folderName, imageName));
+      });
 
-      // delete the old images from cloudinary
-      publicIds.forEach(async (publicId) => {
-        try {
-          if (publicId) {
-            await uploader.destroy(publicId, (error, result) => {
-              if (error) {
-                console.error(error);
-              } else {
-                console.log('cloud asset', result);
-              }
-            });
-          }
-        } catch (err) {
-          console.error(err);
+      // Upload the new images
+      req.files.forEach(async (file) => {
+        const fileName =
+          file.originalname
+            .toLowerCase()
+            .replaceAll(' ', '-')
+            .replace(/\s/g, '-')
+            .split('.')[0] +
+          '-' +
+          id +
+          '.' +
+          file.originalname.split('.')[1];
+
+        const folderName = join(__dirname, '..', 'public', 'bags');
+
+        // check if the folder exists
+        if (!existsSync(folderName)) {
+          mkdirSync(folderName);
         }
+
+        await writeFile(join(folderName, fileName), file.buffer);
       });
+      const url = `https://weroambags-backend.onrender.com`;
 
-      // upload the images to cloudinary
-      file1 = await uploader.upload(filePath1, {
-        folder: 'bags',
-        use_filename: true,
-        unique_filename: false,
-        overwrite: true,
-        invalidate: true,
-      });
-
-      unlink(filePath1, (err) => {
-        if (err) {
-          console.error(err);
-        } else {
-          console.log('file1 deleted'); // logged on server console
-        }
-      });
-
-      if (fileNames.length > 1) {
-        file2 = await uploader.upload(filePath2, {
-          folder: 'bags',
-          use_filename: true,
-          unique_filename: false,
-          overwrite: true,
-          invalidate: true,
-        });
-
-        unlink(filePath2, (err) => {
-          if (err) {
-            console.error(err);
-          } else {
-            console.log('file1 deleted'); // logged on server console
-          }
-        });
-      }
-
-      if (fileNames.length > 2) {
-        file3 = await uploader.upload(filePath3, {
-          folder: 'bags',
-          use_filename: true,
-          unique_filename: false,
-          overwrite: true,
-          invalidate: true,
-        });
-
-        unlink(filePath3, (err) => {
-          if (err) {
-            console.error(err);
-          } else {
-            console.log('file1 deleted'); // logged on server console
-          }
-        });
-      }
-
-      images.push(file1.secure_url);
-      images.push(file2.secure_url);
-      images.push(file3.secure_url);
+      // access the images
+      newImages = files.map((file) => `${url}/bags/${file}`);
     }
 
-    // console.log(images.length);
-    // console.log('images', images);
-    // console.log('file1', file1);
-    // console.log('file2', file2);
-    // console.log('file3', file3);
-
     const updatedReqObj = {
-      title: req.body.title || existingBag.title,
-      oldPrice: req.body.oldPrice || existingBag.oldPrice,
-      rating: req.body.rating || existingBag.rating,
-      newPrice: req.body.newPrice || existingBag.newPrice,
-      available: req.body.available || existingBag.available,
-      sold: req.body.sold || existingBag.sold,
-      thumbnail: images.length > 0 ? images : existingBag.thumbnail,
-      // category: req.body.existingBag.category,
-      // subCategory: req.body.existingBag.subCategory,
-      quantity: req.body.quantity || existingBag.quantity,
-      reviewsCount: req.body.reviewsCount || existingBag.reviewsCount,
-      description: req.body.description || existingBag.description,
-      specifications: req.body.specifications || existingBag.specifications,
-
-      //
-      assetId1: images[0] ? file1.asset_id : existingBag.assetId1,
-      publicId1: images[0] ? file1.public_id : existingBag.publicId1,
-      secureUrl1: images[0] ? file1.secure_url : existingBag.secureUrl1,
-
-      //
-      assetId2: images[1] ? file2.asset_id : existingBag.assetId2,
-      publicId2: images[1] ? file2.public_id : existingBag.publicId2,
-      secureUrl2: images[1] ? file2.secure_url : existingBag.secureUrl2,
-
-      //
-      assetId3: images[2] ? file3.asset_id : existingBag.assetId3,
-      publicId3: images[2] ? file3.public_id : existingBag.publicId3,
-      secureUrl3: images[2] ? file3.secure_url : existingBag.secureUrl3,
+      title: title || existingBag.title,
+      oldPrice: oldPrice || existingBag.oldPrice,
+      rating: rating || existingBag.rating,
+      newPrice: newPrice || existingBag.newPrice,
+      available: available || existingBag.available,
+      sold: sold || existingBag.sold,
+      thumbnail: newImages ?? existingBag.thumbnail,
+      category: existingBag.category,
+      subCategory: existingBag.subCategory,
+      quantity: quantity || existingBag.quantity,
+      reviewsCount: reviewsCount || existingBag.reviewsCount,
+      description: description || existingBag.description,
+      specifications: specifications || existingBag.specifications,
     };
 
     const updatedBag = await Bag.findOneAndUpdate(
@@ -803,20 +623,16 @@ exports.updateBag = async (req, res, next) => {
     // update the bag with the category and subcategory
     // const [updatedCategory, updatedSubCategory] = await Promise.all([
     //   Category.findOneAndUpdate(
-    //     { _id: existingBag.category._id },
+    //     { category: updatedBag.category },
     //     {
-    //       $set: { name: req.body?.category ?? existingBag.category },
+    //       $set: { name: category },
     //     },
     //     { new: true }
     //   ),
     //   SubCategory.findOneAndUpdate(
-    //     { _id: existingBag.subCategory._id },
+    //     { subCategory: updatedBag.subCategory },
     //     {
-    //       $set: {
-    //         name:
-    //           req.body?.subCategoryJSON.parse(req.body?.subCategory) ??
-    //           existingBag.subCategory,
-    //       },
+    //       $set: { name: JSON.parse(subCategory) },
     //     },
     //     { new: true }
     //   ),
@@ -831,16 +647,19 @@ exports.updateBag = async (req, res, next) => {
     //   );
     // }
 
-    // Reset the images
-    images = [];
-    filePath2 = undefined;
-    filePath3 = undefined;
-    file1 = undefined;
-    file2 = undefined;
-    file3 = undefined;
+    // Reset the id
+    id = '';
+
+    // Return the image
+    newImages = undefined;
 
     // check if the cache has the data
-    purgeCache(bagCache);
+    const cacheKey = bagId;
+    const cacheValue = bagCache.get(cacheKey);
+
+    if (cacheValue) {
+      bagCache.del(cacheKey);
+    }
 
     return successResponse(
       res,
@@ -871,48 +690,25 @@ exports.deleteBag = async (req, res, next) => {
       return errorResponse(res, 404, 'fail', 'Bag not found');
     }
 
-    // delete the images from cloudinary
-    const publicIds = [
-      existingBag.publicId1,
-      existingBag.publicId2,
-      existingBag.publicId3,
-    ];
-
-    publicIds.forEach(async (publicId) => {
-      try {
-        if (publicId) {
-          await uploader.destroy(publicId, (error, result) => {
-            if (error) {
-              console.error(error);
-            } else {
-              console.log('cloud asset', result);
-            }
-          });
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    });
-
-    // const images = existingBag.thumbnail;
+    const images = existingBag.thumbnail;
 
     // console.log('images', images);
 
-    // if (images.length >= 0) {
-    //   images.forEach(async (image) => {
-    //     const imageName = image.split('/').pop();
-    //     const folderName = join(process.cwd(), 'public', 'bags');
+    if (images.length >= 0) {
+      images.forEach(async (image) => {
+        const imageName = image.split('/').pop();
+        const folderName = join(process.cwd(), 'public', 'bags');
 
-    //     // console.log('', folderName, imageName);
+        // console.log('', folderName, imageName);
 
-    //     // images are existing
-    //     if (existsSync(join(folderName, imageName))) {
-    //       await unlink(join(folderName, imageName));
-    //     }
+        // images are existing
+        if (existsSync(join(folderName, imageName))) {
+          await unlink(join(folderName, imageName));
+        }
 
-    //     // await unlink(join(folderName, imageName));
-    //   });
-    // }
+        // await unlink(join(folderName, imageName));
+      });
+    }
 
     // const deleteBag = await Bag.findByIdAndDelete(bagId)
     //   .lean()
@@ -937,7 +733,12 @@ exports.deleteBag = async (req, res, next) => {
     }
 
     // check if the cache has the data
-    purgeCache(bagCache);
+    const cacheKey = bagId;
+    const cacheValue = bagCache.get(cacheKey);
+
+    if (cacheValue) {
+      bagCache.del(cacheKey);
+    }
 
     return successResponse(
       res,
@@ -1005,12 +806,9 @@ exports.getCategories = async (req, res, next) => {
     } else {
       const categories = await Category.find({})
         .lean()
-        .populate(
-          'bags',
-          '-updatedAt -assetId1 -assetId2 -assetId3 -publicId1 -publicId2 -publicId3 -secureUrl1 -secureUrl2 -secureUrl3'
-        )
+        .populate('bags', '-updatedAt -category -subCategory -createdAt')
         .populate('subCategories', 'name')
-        .select('-updatedAt -createdAt')
+        .select('-updatedAt')
         .exec();
 
       if (!categories) {
@@ -1058,11 +856,8 @@ exports.getSubCategories = async (req, res, next) => {
     } else {
       const subCategories = await SubCategory.find()
         .lean()
-        .select('-updatedAt -createdAt')
-        .populate(
-          'bags',
-          '-updatedAt -assetId1 -assetId2 -assetId3 -publicId1 -publicId2 -publicId3 -secureUrl1 -secureUrl2 -secureUrl3'
-        )
+        .select('-updatedAt')
+        .populate('bags', '-updatedAt -category -subCategory -createdAt')
         .populate('category', 'name')
         .exec();
 
