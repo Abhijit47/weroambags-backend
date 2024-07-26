@@ -21,8 +21,8 @@ router.post(
 router.patch(
   '/update-blog/:id',
   blogController.uploadBlogImage,
-  blogController.uploadToServer,
-  blogController.uploadToCloud,
+  // blogController.uploadToServer,
+  // blogController.uploadToCloud,
   blogController.updateBlog
 );
 

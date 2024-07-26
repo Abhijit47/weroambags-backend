@@ -9,6 +9,8 @@ const Contents = require('../models/contentsModel');
 
 const uploader = require('../configs/cloudinary');
 const upload = require('../configs/multerConfig');
+const catchAsync = require('../utils/catchAsync');
+const AppError = require('../utils/appError');
 
 const {
   randomId,
@@ -363,88 +365,113 @@ exports.getBlog = async (req, res, next) => {
 };
 
 // UPDATE BLOG
-exports.updateBlog = async (req, res, next) => {
-  try {
-    const { id } = req.params;
-    const { title } = req.body;
+exports.updateBlog = catchAsync(async (req, res, next) => {
+  const { id } = req.params;
+  const { title, contents } = req.body;
 
-    // If there no id or is less than 24 characters
-    if (!id || id <= 24) {
-      return errorResponse(res, 400, 'fail', 'Please provide a valid id.', id);
-    }
-
-    // If there is no title or content
-    if (!title) {
-      return errorResponse(res, 400, 'fail', 'Please provide the title.');
-    }
-
-    // find the existing blog
-    const existingBlog = await Blog.findById({ _id: id }).lean();
-    if (!existingBlog) {
-      return errorResponse(res, 404, 'fail', 'No Blog found for update.');
-    }
-
-    // delete the existing blog cover
-    const existingCover = existingBlog.publicId;
-
-    uploader.destroy(existingCover, function (error, result) {
-      if (error) {
-        console.error(error);
-      }
-      console.log('DELETE', result);
-      console.log(`Deleted the existing blog cover from cloudinary`);
-    });
-
-    // if there is a new cover image
-    if (!req.cloudinaryResponse) {
-      return res
-        .status(400)
-        .json({ message: 'Please upload a new blog cover' });
-    }
-
-    const updateObj = {
-      title: title || existingBlog.title,
-      cover: req.cloudinaryResponse.secure_url,
-      assetId: req.cloudinaryResponse.asset_id,
-      publicId: req.cloudinaryResponse.public_id,
-      secretUrl: req.cloudinaryResponse.secure_url,
-    };
-
-    const updatedBlog = await Blog.findOneAndUpdate(
-      {
-        _id: id,
-      },
-      {
-        $set: updateObj,
-      },
-      {
-        new: true,
-        // runValidators: true,
-      }
-    );
-
-    if (!updatedBlog) {
-      return errorResponse(res, 404, 'fail', 'Something went wrong');
-    }
-
-    // check if the cache has the data
-    purgeCache(blogCache);
-
-    return successResponse(
-      res,
-      200,
-      'success',
-      'Successfully updated blog',
-      updatedBlog
-    );
-  } catch (error) {
-    console.error(error.name);
-    console.error(error.message);
-    console.error(error.stack);
-
-    return errorResponse(res, 500, 'error', error.message, error);
+  // If there no id or is less than 24 characters
+  if (!id || id.length !== 24) {
+    return next(new AppError('Please provide a valid id.', 400));
   }
-};
+
+  // If there is no title or content
+  if (!title && !contents) {
+    return next(new AppError('Please provide a title or content', 400));
+  }
+
+  // find the existing blog
+  const existingBlog = await Blog.findById({ _id: id }).lean();
+  if (!existingBlog) {
+    return next(new AppError('No Blog found for update', 404));
+  }
+
+  console.log('contents', contents);
+
+  // if (contents) {
+  //   // find the associated blog
+
+  //   const associatedBlog = await Contents.find({
+  //     blogId: existingBlog._id,
+  //   }).lean();
+
+  //   console.log('existingContents', associatedBlog);
+
+  // }
+
+  // delete the existing blog cover
+  const existingCover = existingBlog.publicId;
+
+  // uploader.destroy(existingCover, function (error, result) {
+  //   if (error) {
+  //     console.error(error);
+  //   }
+  //   console.log('DELETE', result);
+  //   console.log(`Deleted the existing blog cover from cloudinary`);
+  // });
+
+  // if there is a new cover image
+  // if (!req.cloudinaryResponse) {
+  //   return next(new AppError('Please upload a new blog cover', 400));
+  // }
+
+  // const updateObj = {
+  //   title: title || existingBlog.title,
+  //   cover: req.cloudinaryResponse.secure_url,
+  //   assetId: req.cloudinaryResponse.asset_id,
+  //   publicId: req.cloudinaryResponse.public_id,
+  //   secretUrl: req.cloudinaryResponse.secure_url,
+  // };
+
+  // const updatedBlog = await Blog.findOneAndUpdate(
+  //   {
+  //     _id: id,
+  //   },
+  //   {
+  //     $set: updateObj,
+  //   },
+  //   {
+  //     new: true,
+  //     // runValidators: true,
+  //   }
+  // );
+
+  // if (!updatedBlog) {
+  //   return next(new AppError('Something went wrong', 404));
+  // }
+
+  // update the contents
+  if (contents) {
+    // const updatedContents = await Contents.updateMany(
+    //   { blogId: id },
+    //   {
+    //     $set: {
+    //       title: JSON.parse(contents.title),
+    //       description: JSON.parse(contents.title),
+    //     },
+    //   },
+    //   {
+    //     new: true,
+    //     runValidators: true,
+    //   }
+    //   // JSON.parse(contents).map((content) => ({
+    //   //   blogId: updatedBlog._id,
+    //   //   title: content.title,
+    //   //   description: content.description,
+    //   // }))
+    // );
+  }
+
+  // check if the cache has the data
+  purgeCache(blogCache);
+
+  return successResponse(
+    res,
+    200,
+    'success',
+    'Successfully updated blog',
+    'updatedBlog'
+  );
+});
 
 // DELETE BLOG
 exports.deleteBlog = async (req, res, next) => {
