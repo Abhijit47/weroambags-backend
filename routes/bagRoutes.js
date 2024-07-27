@@ -11,7 +11,7 @@ router
   .route('/get-bag/:id')
   .get(
     authMiddleware.protect,
-    authMiddleware.restrictTo(['admin', 'user']),
+    authMiddleware.restrictTo('admin', 'user'),
     bagController.getBag
   );
 

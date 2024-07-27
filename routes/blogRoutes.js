@@ -10,7 +10,7 @@ router.get('/get-blogs', blogController.getBlogs);
 router.get(
   '/get-blog/:id',
   authMiddleware.protect,
-  authMiddleware.restrictTo(['admin', 'user']),
+  authMiddleware.restrictTo('admin', 'user'),
   blogController.getBlog
 );
 
