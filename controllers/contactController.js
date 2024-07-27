@@ -1,136 +1,121 @@
 const NodeCache = require('node-cache');
 
 const ContactUs = require('../models/contactUsModel');
-const { errorResponse, successResponse } = require('../utils/helpers');
+const {
+  errorResponse,
+  successResponse,
+  purgeCache,
+} = require('../utils/helpers');
+const catchAsync = require('../utils/catchAsync');
+const AppError = require('../utils/appError');
 
 const contactCache = new NodeCache({ stdTTL: 60 * 60 });
 
-exports.createContact = async (req, res, next) => {
-  try {
-    const { firstName, lastName, email, phoneNo, message } = req.body;
+exports.createContact = catchAsync(async (req, res, next) => {
+  const { firstName, lastName, email, phoneNo, message } = req.body;
 
-    if (!firstName || !lastName || !email || !phoneNo || !message) {
-      return errorResponse(res, 400, 'Bad Request', 'All fields are required');
-    }
-
-    // Check if email or phone number already exists
-    const existingUser = await ContactUs.find({
-      $or: [{ phoneNo }, { email }],
-    }).lean();
-
-    // const existingContact = await ContactUs.find({ email });
-    if (existingUser.length === 0) {
-      const newContact = await ContactUs.create({
-        firstName,
-        lastName,
-        email,
-        phoneNo,
-        message,
-      });
-
-      if (!newContact) {
-        return errorResponse(
-          res,
-          500,
-          'Something went wrong',
-          'An error occurred while creating contact'
-        );
-      }
-
-      // check if the contact is already in the cache
-      const cacheKeys = contactCache.keys();
-      if (cacheKeys) {
-        contactCache.flushAll();
-        contactCache.flushStats();
-      }
-
-      return successResponse(
-        res,
-        201,
-        'success',
-        'Contact created successfully',
-        newContact._id
-      );
-    } else {
-      return errorResponse(res, 409, 'fail', 'email or phone already exists');
-    }
-  } catch (error) {
-    console.error(error.name);
-    console.error(error.message);
-    console.error(error.stack);
-    return errorResponse(res, 500, 'Server Error', error.message);
+  if (!firstName || !lastName || !email || !phoneNo || !message) {
+    return next(new AppError('All fields are required', 400));
   }
-};
 
-exports.getContacts = async (req, res, next) => {
-  try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
+  // Check if email or phone number already exists
+  const existingUser = await ContactUs.find({
+    $or: [{ phoneNo }, { email }],
+  }).lean();
 
-    const totalContacts = await ContactUs.countDocuments();
-    const totalPages = Math.ceil(totalContacts / limit);
-    const nextPage = page < totalPages ? page + 1 : null;
-    const prevPage = page > 1 ? page - 1 : null;
-    const currentPage = page;
-    const offset = (page - 1) * limit;
+  // const existingContact = await ContactUs.find({ email });
+  if (existingUser.length === 0) {
+    const newContact = await ContactUs.create({
+      firstName,
+      lastName,
+      email,
+      phoneNo,
+      message,
+    });
+
+    if (!newContact) {
+      return next(
+        new AppError('An error occurred while creating contact', 500)
+      );
+    }
 
     // check if the contact is already in the cache
-    const cacheValue = contactCache.get('contacts');
-    if (cacheValue) {
-      return successResponse(
-        res,
-        200,
-        'success',
-        'Contacts retrieved successfully',
-        {
-          totalContacts,
-          totalPages,
-          nextPage,
-          prevPage,
-          currentPage,
-          perPage: limit,
-          contacts: cacheValue,
-        }
-      );
-    } else {
-      const contacts = await ContactUs.find({})
-        .lean()
-        .skip(offset)
-        .limit(limit)
-        .sort({ createdAt: -1 })
-        .select('-updatedAt')
-        .exec();
+    purgeCache('contacts');
 
-      if (!contacts) {
-        return errorResponse(res, 404, 'Not Found', 'No contacts found');
-      }
-
-      // set the contacts in the cache
-      contactCache.set('contacts', contacts);
-
-      return successResponse(
-        res,
-        200,
-        'success',
-        'Contacts retrieved successfully',
-        {
-          totalContacts,
-          totalPages,
-          nextPage,
-          prevPage,
-          currentPage,
-          perPage: limit,
-          contacts,
-        }
-      );
-    }
-  } catch (error) {
-    console.error(error.name);
-    console.error(error.message);
-    console.error(error.stack);
-    return errorResponse(res, 500, 'Internal Server Error', error.message);
+    return successResponse(
+      res,
+      201,
+      'success',
+      'Contact created successfully',
+      newContact._id
+    );
+  } else {
+    return next(new AppError('Email or phone number already exists', 409));
   }
-};
+});
+
+exports.getContacts = catchAsync(async (req, res, next) => {
+  const page = parseInt(req.query.page) || 1;
+  const limit = parseInt(req.query.limit) || 10;
+
+  const totalContacts = await ContactUs.countDocuments();
+  const totalPages = Math.ceil(totalContacts / limit);
+  const nextPage = page < totalPages ? page + 1 : null;
+  const prevPage = page > 1 ? page - 1 : null;
+  const currentPage = page;
+  const offset = (page - 1) * limit;
+
+  // check if the contact is already in the cache
+  const cacheValue = contactCache.get('contacts');
+  if (cacheValue) {
+    return successResponse(
+      res,
+      200,
+      'success',
+      'Contacts retrieved successfully',
+      {
+        totalContacts,
+        totalPages,
+        nextPage,
+        prevPage,
+        currentPage,
+        perPage: limit,
+        contacts: cacheValue,
+      }
+    );
+  } else {
+    const contacts = await ContactUs.find({})
+      .lean()
+      .skip(offset)
+      .limit(limit)
+      .sort({ createdAt: -1 })
+      .select('-updatedAt')
+      .exec();
+
+    if (!contacts) {
+      return next(new AppError('No contacts found', 404));
+    }
+
+    // set the contacts in the cache
+    contactCache.set('contacts', contacts);
+
+    return successResponse(
+      res,
+      200,
+      'success',
+      'Contacts retrieved successfully',
+      {
+        totalContacts,
+        totalPages,
+        nextPage,
+        prevPage,
+        currentPage,
+        perPage: limit,
+        contacts,
+      }
+    );
+  }
+});
 
 exports.getContact = async (req, res, next) => {
   try {

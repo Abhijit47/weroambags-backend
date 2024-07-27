@@ -1,10 +1,9 @@
 const express = require('express');
 const passport = require('passport');
 const authMiddleware = require('../middlewares/authMiddleware');
+const userController = require('../controllers/userController');
 
 const router = express.Router();
-
-const userController = require('../controllers/userController');
 
 router.route('/register').post(userController.register);
 
@@ -36,7 +35,13 @@ router
     userController.SignInWithFacebook
   );
 
-router.route('/me').get(authMiddleware.protect, userController.getMe);
+router
+  .route('/me')
+  .get(
+    authMiddleware.protect,
+    authMiddleware.restrictTo('user'),
+    userController.getMe
+  );
 
 router
   .route('/get-users')
