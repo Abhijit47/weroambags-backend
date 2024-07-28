@@ -2,39 +2,36 @@ const User = require('../models/userModel');
 const AppError = require('../utils/appError');
 const catchAsync = require('../utils/catchAsync');
 
-exports.register = async (req, res, next) => {
-  try {
-    // console.log('user', req.user);
-    const { name, email, password, phone } = req.body;
+exports.register = catchAsync(async (req, res, next) => {
+  // console.log('user', req.user);
+  const { name, email, password, phone } = req.body;
 
-    // console.log('name', name);
-    // console.log('email', email);
-    // console.log('password', password);
-    // console.log('phone', phone);
+  // console.log('name', name);
+  // console.log('email', email);
+  // console.log('password', password);
+  // console.log('phone', phone);
 
-    const existingUser = await User.findOne({ email: email });
+  const existingUser = await User.findOne({ email: email });
 
-    if (existingUser) {
-      return res
-        .status(400)
-        .json({ message: 'User already exists try to login' });
-    }
-
-    const user = await User.create({
-      name,
-      email,
-      password,
-      phone,
-    });
-
-    const token = user.getSignedToken();
-
-    return res.status(200).json({ message: 'Registration successful', token });
-  } catch (error) {
-    console.log(error);
-    return res.status(500).json({ message: 'Internal server error' });
+  if (existingUser) {
+    return next(new AppError('User already exists try to login', 400));
   }
-};
+
+  const user = await User.create({
+    name,
+    email,
+    password,
+    phone,
+  });
+
+  if (!user) {
+    return next(new AppError('Something went wrong', 500));
+  }
+
+  const token = user.getSignedToken();
+
+  return res.status(200).json({ message: 'Registration successful' });
+});
 
 exports.login = catchAsync(async (req, res, next) => {
   // console.log('reqController', req.body); // same as req.body
