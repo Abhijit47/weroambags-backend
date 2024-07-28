@@ -40,7 +40,7 @@ exports.createContact = catchAsync(async (req, res, next) => {
     }
 
     // check if the contact is already in the cache
-    purgeCache('contacts');
+    purgeCache(contactCache);
 
     return successResponse(
       res,
