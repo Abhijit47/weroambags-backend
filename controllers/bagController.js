@@ -259,7 +259,7 @@ exports.getBags = catchAsync(async (req, res, next) => {
   const currentPage = page;
 
   // check if the query is a category or subcategory
-  // filter the bags
+  // filter the bags by category
   if (q) {
     const filteredCategory = await Category.find({
       name: { $regex: q, $options: 'i' },
@@ -273,7 +273,19 @@ exports.getBags = catchAsync(async (req, res, next) => {
       .populate('subCategories', 'name')
       .exec();
 
-    const filteredBags = [...filteredCategory];
+    const filteredSubCategory = await SubCategory.find({
+      name: { $regex: q, $options: 'i' },
+    })
+      .lean()
+      .select('-updatedAt -createdAt')
+      .populate(
+        'bags',
+        '-updatedAt -assetId1 -assetId2 -assetId3 -publicId1 -publicId2 -publicId3 -secureUrl1 -secureUrl2 -secureUrl3 -category -subCategory -createdAt'
+      )
+      .populate('category', 'name')
+      .exec();
+
+    const filteredBags = [...filteredCategory, ...filteredSubCategory];
 
     if (filteredBags.length <= 0) {
       return next(new AppError('No bags found', 404));
