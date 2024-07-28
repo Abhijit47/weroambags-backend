@@ -39,7 +39,7 @@ router
   .route('/me')
   .get(
     authMiddleware.protect,
-    authMiddleware.restrictTo('user'),
+    authMiddleware.restrictTo('user', 'admin'),
     userController.getMe
   );
 
